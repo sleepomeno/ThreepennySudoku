@@ -10,6 +10,15 @@ framework.
 ![alt text](https://raw.github.com/sleepomeno/ThreepennySudoku/master/screenshot.png
  "Sudoku Screenshot")
 
+## What is it for?
+
+Writing Haskell GUIs has not been easy in the past because bindings to
+native GUI framworks like GTK have been a pain. It's therefore very
+clever to use a web interface instead. This project is therefore a
+playground to explore the possibilities of the
+[threepenny-gui](https://github.com/HeinrichApfelmus/threepenny-gui)
+framework for Haskell Web GUIs. So don't expect any groundbreaking
+Sudoku functionality ;)
 
 ## How can I start it?
 You need *cabal* in order to build the application. I actually
