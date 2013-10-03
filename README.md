@@ -21,5 +21,5 @@ If you run it you can access the application on **localhost:10000**!
 
 ## What needs to be done?
 
-* Write better styling (*wwwroot/css/sudoku.css*)
+* Write better styling in *wwwroot/css/sudoku.css*
 * Download free sudokus and select them in GUI
