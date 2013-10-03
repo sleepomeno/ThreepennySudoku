@@ -14,128 +14,66 @@ import Graphics.UI.Threepenny.Core
 #endif
 import Paths
 
-{-----------------------------------------------------------------------------
-    Missing Dollars
-------------------------------------------------------------------------------}
+type Sudoku = [[Digit]] -- a Sudoku consists of rows of digits
+data Digit = NotFree Int | Free Int -- a digit is either visible to
+                           -- the user (=Free) oder has to be guessed
+                           -- (= NotFree)
+
+-- Sample Sudoku (TODO: Download free Sudokus and write UI to choose
+              -- between them)
+mysudoku :: Sudoku
+mysudoku = [[NotFree 1, Free 6, NotFree 2, Free 5, NotFree 7, Free 3, NotFree 9, Free 8, NotFree 4],
+            [NotFree 7, NotFree 3, Free 4, NotFree 8, Free 9, NotFree 2, NotFree 5, NotFree 1, NotFree 6],
+            [NotFree 5, NotFree 9, NotFree 8, NotFree 1, NotFree 4, NotFree 6, Free 2, NotFree 3, Free 7],
+            [NotFree 4, NotFree 5, NotFree 7, Free 2, NotFree 6, NotFree 1, NotFree 8, NotFree 9, NotFree 3],
+            [NotFree 8, NotFree 2, Free 6, NotFree 7, Free 3, Free 9, Free 1, NotFree 5, NotFree 5],
+            [NotFree 9, Free 1, Free 3, Free 4, NotFree 6, NotFree 8, NotFree 6, NotFree 7, NotFree 2],
+            [NotFree 3, Free 7, NotFree 1, Free 9, NotFree 2, NotFree 5, NotFree 4, NotFree 6, NotFree 8],
+            [NotFree 6, Free 8, NotFree 5, NotFree 3, Free 1, NotFree 4, NotFree 7, NotFree 2, NotFree 9],
+            [Free 2, NotFree 4, Free 9, Free 6, NotFree 8, NotFree 7, NotFree 3, Free 5, NotFree 1]]
+
+  
 main :: IO ()
 main = do
     static <- getStaticDir
     startGUI defaultConfig
         { tpPort       = 10000
         , tpStatic     = Just static
-        } setup
+        } mysetup
 
 
-setup :: Window -> IO ()
-setup w = void $ do
-    return w # set title "Sudoku"
-    UI.addStyleSheet w "sudoku.css"
+mysetup :: Window -> IO ()
+mysetup w = void $ do
+  return w # set title "Sudoku"
+  UI.addStyleSheet w "sudoku.css"
+  getBody w #+ [UI.div #. "sudoku" #+ [createCell row col mysudoku | row <- [0..8], col <- [0..8]]]
+
     
-    (headerView,headerMe) <- mkHeader
-    riddle                <- mkMissingDollarRiddle headerMe
-    let layout = [element headerView] ++ riddle ++ attributionSource        
-    getBody w #+ [UI.div #. "wrap" #+ layout]
+createCell :: Int -> Int -> Sudoku -> IO Element
+createCell r c sudoku =
+  let row = show r
+      col = show c
+      -- these classes are not necessary but good to indicate that the
+            -- cell is in its correct place in the grid
+      classes = "cell row"++row++"col"++col
+      solution = case (sudoku!!r)!!c of
+        Free digit -> digit
+        NotFree digit -> digit
+      in do
+    cell <- UI.div #. classes
+    cellInput <- UI.input # set (attr "maxlength") "1"
 
+    on UI.valueChange cellInput $ \val -> do
+      if (val == "") then
+        element cell #. classes
+        else if (read val == solution) then
+               element cell #. (classes ++ " right")
+             else
+               element cell #. (classes ++ " wrong")
+      return ()
 
-mkHeader :: IO (Element, Element)
-mkHeader = do
-    headerMe <- string "..."
-    view     <- UI.h1   #+ [string "The ", element headerMe, string " Dollars"]
-    return (view, headerMe)
+    case (sudoku!!r)!!c of
+      Free digit -> element cellInput # set value (show solution) # set (attr "readonly") "true" #. "free"
+      _ -> element cellInput # set value ""
 
-attributionSource :: [IO Element]
-attributionSource =
-    [ UI.p #+
-        [ UI.anchor #. "view-source" # set UI.href urlSource
-            #+ [string "View source code"]
-        ]
-    , UI.p #+
-        [ string "Originally by "
-        , UI.anchor # set UI.href urlAttribution #+ [string "Albert Lai"]
-        ]
-    ]
-  where
-    urlSource      = "https://github.com/HeinrichApfelmus/threepenny-gui/blob/master/src/MissingDollars.hs"
-    urlAttribution = "http://www.vex.net/~trebla/humour/missing_dollar.html"
-
-
-mkMissingDollarRiddle :: Element -> IO [IO Element]
-mkMissingDollarRiddle headerMe = do
-    -- declare input and display values
-    (hotelOut : hotelCost : hotelHold : _)
-        <- sequence . replicate 3 $
-            UI.input # set (attr "size") "3" # set (attr "type") "text"
-
-    (hotelChange : hotelRet     : hotelBal : hotelPocket :
-     hotelBal2   : hotelPocket2 : hotelSum : hotelMe     : _)
-        <- sequence . replicate 8 $ UI.span
-    
-    -- update procedure
-    let updateDisplay out cost hold = do
-        let change = out - cost
-            ret    = change - hold
-            bal    = out - ret
-            sum    = bal + hold
-            diff   = sum - out
-        element hotelOut     # set value (show out)
-        element hotelCost    # set value (show cost)
-        element hotelHold    # set value (show hold)
-        element hotelChange  # set text  (show change)
-        element hotelRet     # set text  (show ret)
-        element hotelBal     # set text  (show bal)
-        element hotelPocket  # set text  (show hold)
-        element hotelBal2    # set text  (show bal)
-        element hotelPocket2 # set text  (show hold)
-        element hotelSum     # set text  (show sum)
-        
-        if diff >= 0
-           then do element hotelMe  # set text ("extra $" ++ show diff ++ " come from")
-                   element headerMe # set text "Extra"
-           else do element hotelMe  # set text ("missing $" ++ show (-diff) ++ " go")
-                   element headerMe # set text "Missing"
-        return ()
-    
-    -- initialize values
-    updateDisplay 30 25 2
-    
-    -- calculate button
-    calculate <- UI.button #+ [string "Calculate"]
-    on UI.click calculate $ \_ -> do
-        result <- mapM readMay `liftM` getValuesList [hotelOut,hotelCost,hotelHold]
-        case result of
-            Just [getout,getcost,gethold] -> updateDisplay getout getcost gethold
-            _ -> return ()
-    
-    return $
-        [ UI.h2 #+ [string "The Guests, The Bellhop, And The Pizza"]
-        , UI.p  #+
-            [ string "Three guests went to a hotel and gave $"
-            , element hotelOut
-            , string " to the bellhop to buy pizza. The pizza cost only $"
-            , element hotelCost
-            , string ". Of the $"
-            , element hotelChange
-            , string " change, the bellhop kept $"
-            , element hotelHold
-            , string " to himself and returned $"
-            , element hotelRet
-            , string " to the guests."
-            ]
-        , UI.p  #+
-            [ string "So the guests spent $"
-            , element hotelBal
-            , string ", and the bellhop pocketed $"
-            , element hotelPocket
-            , string ". Now "
-            , string "$"
-            , element hotelBal2
-            , string "+$"
-            , element hotelPocket2
-            , string "=$"
-            , element hotelSum
-            , string ". Where did the "
-            , element hotelMe
-            , string "?"
-            ]
-        , element calculate
-        ]    
+    element cell #+ [element cellInput]
