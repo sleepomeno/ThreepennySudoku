@@ -56,6 +56,10 @@ input {
 .sudoku {
     width: 639px;
 }
+.sudoku .square {
+    width: 213px;
+    float: left;
+    }
 .sudoku .cell:nth-child(19), .sudoku .cell:nth-child(20), .sudoku .cell:nth-child(21) , .sudoku .cell:nth-child(22) , .sudoku .cell:nth-child(23), .sudoku .cell:nth-child(24), .sudoku .cell:nth-child(25), .sudoku .cell:nth-child(26), .sudoku .cell:nth-child(27), .sudoku .cell:nth-child(54), .sudoku .cell:nth-child(46), .sudoku .cell:nth-child(51), .sudoku .cell:nth-child(47), .sudoku .cell:nth-child(48), .sudoku .cell:nth-child(49), .sudoku .cell:nth-child(50), .sudoku .cell:nth-child(52), .sudoku .cell:nth-child(53)      {
     border-bottom: 3px black solid;
 }

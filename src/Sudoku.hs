@@ -46,7 +46,30 @@ mysetup :: Window -> IO ()
 mysetup w = void $ do
   return w # set title "Sudoku"
   UI.addStyleSheet w "sudoku.css"
-  getBody w #+ [UI.div #. "sudoku" #+ [createCell row col mysudoku | row <- [0..8], col <- [0..8]]]
+  getBody w #+ [UI.div #. "sudoku" #+ sudokuGrid [createCell row col mysudoku | row <- [0..8], col <- [0..8]]]
+
+sudokuGrid :: [IO Element] -> [IO Element]
+sudokuGrid cells =  concat [makePartition firstThird, makePartition secondThird, makePartition thirdThird]
+  where
+    firstThird = take 27 cells
+    secondThird = take 27 $ drop 27 cells
+    thirdThird = drop 54 cells
+
+    makePartition :: [IO Element] -> [IO Element]
+    makePartition cs = concat $ partitionCells cs [[],[],[]]
+      where
+        -- Separates 27 cells into 3 sudo squares
+        partitionCells :: [IO Element] -> [[IO Element]] -> [[IO Element]]
+        partitionCells [] acc = [makeSquare (acc!!0), makeSquare (acc!!1), makeSquare (acc!!2)]
+                                where
+                                makeSquare :: [IO Element] -> [IO Element]
+                                makeSquare cells = [UI.div #. "square" #+ cells]
+        partitionCells cs acc = partitionCells restCells [acc!!0 ++ firstThree, acc!!1 ++ secondThree, acc!!2 ++ thirdThree]
+          where
+            firstThree = take 3 cs
+            secondThree = take 3 $ drop 3 cs
+            thirdThree = take 3 $ drop 6 cs
+            restCells = drop 9 cs
 
     
 createCell :: Int -> Int -> Sudoku -> IO Element
