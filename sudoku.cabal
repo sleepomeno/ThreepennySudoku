@@ -19,22 +19,32 @@ Data-files:          wwwroot/css/*.css
                      ,wwwroot/css/*.png
 
 flag buildExamples
-    description: Build example executables.
+    description: Build sudoku application and scraper executables.
     default:     False
 
 Library
   Hs-source-dirs:    src
-  Exposed-modules:
+  Exposed-modules: Solver
   Other-modules:        Paths_sudoku
   CPP-Options:      -DCABAL
-  build-depends:       safe, base ==4.5.*, threepenny-gui == 0.3.0.0, filepath
+  build-depends:       safe, base ==4.5.*, threepenny-gui ==0.3.0.0, filepath, hxt, HandsomeSoup, tagsoup, split ==0.2.2, vector, HTTP
 
 executable sudoku
   if flag(buildExamples)
      cpp-options: -DCABAL
-     build-depends:       safe, base ==4.5.*, threepenny-gui == 0.3.0.0, filepath
+     build-depends:       safe, base ==4.5.*, threepenny-gui ==0.3.0.0, filepath, hxt, HTTP, vector, split ==0.2.2
   else
      buildable: False
   main-is:        Sudoku.hs
   hs-source-dirs: src
   other-modules:  Paths_sudoku, Paths
+
+executable scraper
+  if flag(buildExamples)
+     cpp-options: -DCABAL
+     build-depends: base, HTTP ==4000.2.2, vector, split ==0.2.2, tagsoup, hxt
+  else
+     buildable: False
+  main-is:        SudokuScraper.hs
+  hs-source-dirs: src
+  other-modules:  Paths_sudoku, Paths, Solver

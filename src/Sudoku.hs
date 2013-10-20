@@ -3,7 +3,7 @@
 module Main where
 
 import Control.Monad
-import Safe
+-- import Safe
 
 #ifdef CABAL
 import qualified  "threepenny-gui" Graphics.UI.Threepenny as UI
@@ -15,22 +15,22 @@ import Graphics.UI.Threepenny.Core
 import Paths
 
 type Sudoku = [[Digit]] -- a Sudoku consists of rows of digits
-data Digit = NotFree Int | Free Int -- a digit is either visible to
+data Digit = Guess Int | Free Int -- a digit is either visible to
                            -- the user (=Free) oder has to be guessed
-                           -- (= NotFree)
+                           -- (= Guess)
 
 -- Sample Sudoku (TODO: Download free Sudokus and write UI to choose
               -- between them)
 mysudoku :: Sudoku
-mysudoku = [[NotFree 1, Free 6, NotFree 2, Free 5, NotFree 7, Free 3, NotFree 9, Free 8, NotFree 4],
-            [NotFree 7, NotFree 3, Free 4, NotFree 8, Free 9, NotFree 2, NotFree 5, NotFree 1, NotFree 6],
-            [NotFree 5, NotFree 9, NotFree 8, NotFree 1, NotFree 4, NotFree 6, Free 2, NotFree 3, Free 7],
-            [NotFree 4, NotFree 5, NotFree 7, Free 2, NotFree 6, NotFree 1, NotFree 8, NotFree 9, NotFree 3],
-            [NotFree 8, NotFree 2, Free 6, NotFree 7, Free 3, Free 9, Free 1, NotFree 5, NotFree 5],
-            [NotFree 9, Free 1, Free 3, Free 4, NotFree 6, NotFree 8, NotFree 6, NotFree 7, NotFree 2],
-            [NotFree 3, Free 7, NotFree 1, Free 9, NotFree 2, NotFree 5, NotFree 4, NotFree 6, NotFree 8],
-            [NotFree 6, Free 8, NotFree 5, NotFree 3, Free 1, NotFree 4, NotFree 7, NotFree 2, NotFree 9],
-            [Free 2, NotFree 4, Free 9, Free 6, NotFree 8, NotFree 7, NotFree 3, Free 5, NotFree 1]]
+mysudoku = [[Guess 1, Free 6, Guess 2, Free 5, Guess 7, Free 3, Guess 9, Free 8, Guess 4],
+            [Guess 7, Guess 3, Free 4, Guess 8, Free 9, Guess 2, Guess 5, Guess 1, Guess 6],
+            [Guess 5, Guess 9, Guess 8, Guess 1, Guess 4, Guess 6, Free 2, Guess 3, Free 7],
+            [Guess 4, Guess 5, Guess 7, Free 2, Guess 6, Guess 1, Guess 8, Guess 9, Guess 3],
+            [Guess 8, Guess 2, Free 6, Guess 7, Free 3, Free 9, Free 1, Guess 5, Guess 5],
+            [Guess 9, Free 1, Free 3, Free 4, Guess 6, Guess 8, Guess 6, Guess 7, Guess 2],
+            [Guess 3, Free 7, Guess 1, Free 9, Guess 2, Guess 5, Guess 4, Guess 6, Guess 8],
+            [Guess 6, Free 8, Guess 5, Guess 3, Free 1, Guess 4, Guess 7, Guess 2, Guess 9],
+            [Free 2, Guess 4, Free 9, Free 6, Guess 8, Guess 7, Guess 3, Free 5, Guess 1]]
 
   
 main :: IO ()
@@ -81,22 +81,22 @@ createCell r c sudoku =
       classes = "cell row"++row++"col"++col
       solution = case (sudoku!!r)!!c of
         Free digit -> digit
-        NotFree digit -> digit
+        Guess digit -> digit
       in do
     cell <- UI.div #. classes
     cellInput <- UI.input # set (attr "maxlength") "1"
 
     on UI.valueChange cellInput $ \val -> do
-      if (val == "") then
+      if val == "" then
         element cell #. classes
-        else if (read val == solution) then
+        else if read val == solution then
                element cell #. (classes ++ " right")
              else
                element cell #. (classes ++ " wrong")
       return ()
 
     case (sudoku!!r)!!c of
-      Free digit -> element cellInput # set value (show solution) # set (attr "readonly") "true" #. "free"
+      Free _ -> element cellInput # set value (show solution) # set (attr "readonly") "true" #. "free"
       _ -> element cellInput # set value ""
 
     element cell #+ [element cellInput]
