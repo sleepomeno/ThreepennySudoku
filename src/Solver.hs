@@ -8,7 +8,6 @@ import Data.Word
 import Data.Bits
 import Control.Monad
 import Data.Maybe
-import System.Environment (getArgs)
 
 -- Types
 type Alphabet   = Word8
@@ -51,7 +50,7 @@ peersDiscriminators = BV.generate ncells discriminator
 -- We can't have multiple same solutions in a peer unit,
 -- eliminate solutions from other hypotheses
 enforceConsistency :: HypothesesSpace -> Maybe HypothesesSpace
-enforceConsistency hypS0 = do
+enforceConsistency hypS0 = 
         V.foldM solutionReduce hypS0 $ V.findIndices newSingle hypS0
 
 solutionReduce :: HypothesesSpace -> Int -> Maybe HypothesesSpace

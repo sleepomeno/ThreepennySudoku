@@ -34,7 +34,18 @@ cabal-dev -fbuildExamples install
 In the folder */cabal-dev/bin* there can then be found an executable.
 If you run it you can access the application on **localhost:10000**!
 
-## What needs to be done?
+## What is the scraper executable for?
+Apart from the sudoku application executable there is also a _scraper_
+executable. This is how I got the free sudokus of the
+*/wwwroot/sudokus* directory. The executable fetches the sudokus from
+[sudoku.org](http://www.soduko.org/sudoku-list.php), use it like this
+to get the first 30 easy sudokus:
 
-* Write better styling in *wwwroot/css/sudoku.css*
-* Download free sudokus in Haskell cocde and make them selectable in GUI
+```
+./scraper 1000000000 30 > easy
+```
+(The first parameter is the starting index of the sudoku.org sudokus. As you can see on [sudoku.org](http://www.soduko.org/sudoku-list.php) the sudokus can be accessed through a fairly simply URL pattern.)
+
+## Next (IMPORTANT!) step
+
+* Make the extracted choosable and playable in the application!! ;)

@@ -15,6 +15,6 @@ getStaticDir = (</> "wwwroot") `liftM` Paths_sudoku.getDataDir
 -- using GHCi
 
 getStaticDir :: IO FilePath
-getStaticDir = return "../wwwroot/"
+getStaticDir = return "wwwroot/"
 
 #endif

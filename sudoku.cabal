@@ -17,6 +17,7 @@ cabal-version:       >=1.8
 Data-dir:            .
 Data-files:          wwwroot/css/*.css
                      ,wwwroot/css/*.png
+                     ,wwwroot/sudokus/*
 
 flag buildExamples
     description: Build sudoku application and scraper executables.

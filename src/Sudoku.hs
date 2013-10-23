@@ -36,6 +36,7 @@ mysudoku = [[Guess 1, Free 6, Guess 2, Free 5, Guess 7, Free 3, Guess 9, Free 8,
 main :: IO ()
 main = do
     static <- getStaticDir
+    putStrLn static
     startGUI defaultConfig
         { tpPort       = 10000
         , tpStatic     = Just static
