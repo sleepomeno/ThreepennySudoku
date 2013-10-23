@@ -9,7 +9,6 @@ framework.
 
 ![alt text](https://raw.github.com/sleepomeno/ThreepennySudoku/master/screenshot.png
  "Sudoku Screenshot")
-
 ## What is it for?
 
 Writing Haskell GUIs has not been easy in the past because bindings to
@@ -48,4 +47,4 @@ to get the first 30 easy sudokus:
 
 ## Next (IMPORTANT!) step
 
-* Make the extracted choosable and playable in the application!! ;)
+* Make the extracted Sudokus choosable and playable in the application!! ;)
