@@ -17,7 +17,7 @@ cabal-version:       >=1.8
 Data-dir:            .
 Data-files:          wwwroot/css/*.css
                      ,wwwroot/css/*.png
-                     ,wwwroot/sudokus/*
+                     ,wwwroot/sudokus/*.sudoku
 
 flag buildExamples
     description: Build sudoku application and scraper executables.
@@ -28,12 +28,12 @@ Library
   Exposed-modules: Solver
   Other-modules:        Paths_sudoku
   CPP-Options:      -DCABAL
-  build-depends:       safe, base ==4.5.*, threepenny-gui ==0.3.0.0, filepath, hxt, HandsomeSoup, tagsoup, split ==0.2.2, vector, HTTP
+  build-depends:       safe, base ==4.5.*, threepenny-gui ==0.3.0.0, filepath, hxt, HandsomeSoup, tagsoup, split ==0.2.2, vector, HTTP, lens ==3.10
 
 executable sudoku
   if flag(buildExamples)
      cpp-options: -DCABAL
-     build-depends:       safe, base ==4.5.*, threepenny-gui ==0.3.0.0, filepath, hxt, HTTP, vector, split ==0.2.2
+     build-depends:       safe, base ==4.5.*, threepenny-gui ==0.3.0.0, filepath, hxt, HTTP, vector, split ==0.2.2, lens ==3.10
   else
      buildable: False
   main-is:        Sudoku.hs

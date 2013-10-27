@@ -7,16 +7,7 @@ import Network.HTTP
 import Control.Concurrent (threadDelay)
 import System.Environment (getArgs)
 import System.Exit
-  
--- lists of INTs are either sudoku rows or sudoku squares
-type RawSudoku = [[Int]]
-data RawSudokuWithId = RawS Int RawSudoku
-
-data Digit = Guess Int | Free Int deriving (Show) -- a digit is either visible to
-                           -- the user (=Free) oder has to be guessed
-                           -- (= Guess)
-type Sudoku = [Digit] -- a Sudoku consists of rows of digits
-data SudokuWithId = Sudoku Int [Digit] deriving (Show) -- a Sudoku consists of rows of digits
+import Common
 
 data SudokuRequest = SudokuRequest { sid :: Int, url :: String }
 
