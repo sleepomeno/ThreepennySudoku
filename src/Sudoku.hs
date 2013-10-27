@@ -24,23 +24,27 @@ data App = App { _easy :: [SudokuWithId],
                             _medium :: [SudokuWithId],
                             _hard :: [SudokuWithId],
                             _insane :: [SudokuWithId],
-                            _window ::
-                              Window,
+                            _window :: Window,
                             _chosen :: SudokuWithId }
 makeLenses ''App
 
 main :: IO ()
 main = do
     static <- getStaticDir
-    putStrLn static
     easySudokus <- readSudokus $ static </> "sudokus" </> "easy.sudoku"
     mediumSudokus <- readSudokus $ static </> "sudokus" </> "medium.sudoku"
     hardSudokus <- readSudokus $ static </> "sudokus" </> "hard.sudoku"
     insaneSudokus <- readSudokus $ static </> "sudokus" </> "insane.sudoku"
+
+    let initialState = App { _chosen = head easySudokus, _easy = easySudokus, _medium = mediumSudokus, _hard = hardSudokus, _insane = insaneSudokus} 
+
+        -- Run the application with the initial configuration
+        executeApplication w = evalStateT mysetup initialState { _window = w }
+
     startGUI defaultConfig
         { tpPort       = 10000
         , tpStatic     = Just static
-        } $ \w -> evalStateT mysetup App { _chosen = head easySudokus, _easy = easySudokus, _medium = mediumSudokus, _hard = hardSudokus, _insane = insaneSudokus, _window = w } 
+        } $ executeApplication
 
 readSudokus :: String -> IO [SudokuWithId]
 readSudokus filename = do
@@ -52,44 +56,50 @@ readSudokus filename = do
 mysetup :: StateT App IO ()
 mysetup =  do
   app <- S.get
-  -- let chosenSdk = _chosen app
   let win = app^.window
-  -- return (window # set title "Sudoku")
+  -- lift $ return (win C.# C.set title "Sudoku")
   lift $ UI.addStyleSheet win "sudoku.css"
+
   showSudoku
-  -- where
-  --   sudoku = head easy 
 
 showSudoku :: StateT App IO ()
 showSudoku  = do
   app <- S.get
   let chosenSdk = _chosen app
-  let window = _window app
-  let (Sudoku sid _) = chosenSdk
+      (Sudoku sid _) = chosenSdk
   caption <- lift $ UI.h1 C.# C.set text ("Sudoku " ++ show sid)
-  myselect <- selectSudokus easy
-  select <- lift $ UI.div #. "selectSudokus" #+  [return myselect]
+  selectEasy <- selectSudokus easy "Easy"
+  selectMedium <- selectSudokus medium "Medium"
+  selectHard <- selectSudokus hard "Hard"
+  selectInsane <- selectSudokus insane "Insane"
+  let sudokus :: [IO Element]
+      sudokus = [return selectEasy, return selectMedium, return selectHard, return selectInsane] 
+  select <- lift $ UI.div #. "selectSudokus" #+ sudokus
   content <- lift $ UI.div #. "sudoku" #+ sudokuGrid [createCell row col chosenSdk | row <- [0..8], col <- [0..8]] 
-  lift $ getBody window C.# C.set C.children [caption, content, select]
+  lift $ getBody (app^.window) C.# C.set C.children [caption, content, select]
   return ()
     
-selectSudokus :: Lens App App [SudokuWithId] [SudokuWithId] -> StateT App IO Element
-selectSudokus linse = do
+selectSudokus :: Lens App App [SudokuWithId] [SudokuWithId] -> String -> StateT App IO Element
+selectSudokus lens caption = do
   app <- S.get
-  let getter = view linse
-  let setter = Control.Lens.set linse 
-  let easySdks = getter app
-  -- lens .= []
-  let options = map (\(Sudoku sid _) -> UI.option C.# C.set value (show sid) C.# C.set text (show sid)) easySdks
+  let getter = Control.Lens.view lens
+  let setter = Control.Lens.set lens 
+  let sdks = getter app
+  let options = map (\(Sudoku sid _) -> UI.option C.# C.set value (show sid) C.# C.set text (show sid)) sdks
   select <- lift $ UI.select #. "selectSudoku" #+ options
 
-  lift $ on UI.selectionChange select  (\(Just val) -> do
-    let chosenSudoku = getSudoku easySdks $ getSID (easySdks!!val)
-        restSudoku = chosenSudoku : filter (\(Sudoku sid _) -> sid /= getSID (easySdks!!val)) easySdks
-    evalStateT (do { state <- S.get; put $ setter restSudoku state; return () } >> showSudoku) (app { _chosen = chosenSudoku, _easy = restSudoku } )
-    return ())
+  lift $ on UI.selectionChange select  $ \(Just val) -> do
+    let chosenSudoku = getSudoku sdks $ getSID (sdks!!val)
+        restSudoku = chosenSudoku : filter (\(Sudoku sid _) -> sid /= getSID (sdks!!val)) sdks
+    evalStateT (do
+                   state <- S.get
+                   put $ setter restSudoku state
+                   return ()
+                >> showSudoku)
+      app { _chosen = chosenSudoku } 
+    return ()
 
-  lift $ C.element select
+  lift $ UI.div #+ [UI.h1 C.# C.set text caption, C.element select]
 
   where
     getSudoku :: [SudokuWithId] -> Int -> SudokuWithId
