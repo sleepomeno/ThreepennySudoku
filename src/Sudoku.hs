@@ -4,18 +4,19 @@ module Main where
 
 #ifdef CABAL
 import qualified  "threepenny-gui" Graphics.UI.Threepenny as UI
-import "threepenny-gui" Graphics.UI.Threepenny.Core as C
+import "threepenny-gui" Graphics.UI.Threepenny.Core
 #else
 import qualified Graphics.UI.Threepenny as UI
-import Graphics.UI.Threepenny.Core as C
+import Graphics.UI.Threepenny.Core
 #endif
 import Paths
 import Data.List.Split
 import Common
-import System.FilePath((</>))
+import System.FilePath((</>),(<.>))
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.State as S
-import Control.Lens hiding (chosen)
+import Control.Lens ((^.), Lens', makeLenses, view)
+import qualified Control.Lens (set)
 
 data App = App { _easy :: [SudokuWithId],
                 _medium :: [SudokuWithId],
@@ -25,15 +26,14 @@ data App = App { _easy :: [SudokuWithId],
                 _chosen :: SudokuWithId }
 makeLenses ''App
 
-type SudokuLens = Lens App App [SudokuWithId] [SudokuWithId] 
+type SudokuLens = Lens' App [SudokuWithId] 
 
 main :: IO ()
 main = do
     static <- getStaticDir
-    easySudokus <- readSudokus $ static </> "sudokus" </> "easy.sudoku"
-    mediumSudokus <- readSudokus $ static </> "sudokus" </> "medium.sudoku"
-    hardSudokus <- readSudokus $ static </> "sudokus" </> "hard.sudoku"
-    insaneSudokus <- readSudokus $ static </> "sudokus" </> "insane.sudoku"
+    -- sudoku-files pattern: <static>/sudokus/<difficulty>.sudoku
+    let sudokus = map (\x -> static </> "sudokus" </> x <.> "sudoku") ["easy", "medium", "hard", "insane"]
+    [easySudokus, mediumSudokus, hardSudokus, insaneSudokus] <- mapM readSudokus sudokus
 
     let initialState = App { _chosen = head easySudokus, _easy = easySudokus, _medium = mediumSudokus, _hard = hardSudokus, _insane = insaneSudokus} 
 
@@ -43,7 +43,7 @@ main = do
     startGUI defaultConfig
         { tpPort       = 10000
         , tpStatic     = Just static
-        } $ executeApplication
+        } executeApplication
 
 readSudokus :: String -> IO [SudokuWithId]
 readSudokus filename = do
@@ -60,71 +60,58 @@ mysetup =  do
   lift $ UI.addStyleSheet win "sudoku.css"
   showSudoku
 
-
-  -- 00 01 02 10 11 12 20 21 22 03 04 05 13 14 15 23 24 25
-
 showSudoku :: StateT App IO ()
 showSudoku  = do
   app <- S.get
-  let chosenSdk = _chosen app
-      (Sudoku sid _) = chosenSdk
-  caption <- lift $ UI.h1 C.# C.set text ("Sudoku " ++ show sid)
-  selectEasy <- selectSudokus easy "Easy"
-  selectMedium <- selectSudokus medium "Medium"
-  selectHard <- selectSudokus hard "Hard"
-  selectInsane <- selectSudokus insane "Insane"
-  let sudokus = map return [selectEasy, selectMedium, selectHard, selectInsane] 
+  let sdkToDisplay = view chosen app
+      (Sudoku sid _) = sdkToDisplay
+  caption <- lift $ UI.h1 # set text ("Sudoku " ++ show sid)
+  sudokus <- mapM (uncurry $ flip selectSudokus) [("Easy", easy),("Medium",medium),("Hard",hard),("Insane",insane)]
                 
-  select <- lift $ UI.div #. "selectSudokus" #+ sudokus
-  content <- lift $ UI.div #. "sudoku" #+ sudokuGrid [createCell row col chosenSdk | row <- [0..8], col <- [0..8]] 
+  select <- lift $ UI.div #. "selectSudokus" #+ map return sudokus
+  content <- lift $ UI.div #. "sudoku" #+ sudokuGrid [createCell row col sdkToDisplay | row <- [0..8], col <- [0..8]] 
 
   -- (Re)draws the whole html body
-  lift $ getBody (app^.window) C.# C.set C.children [caption, content, select]
+  lift $ getBody (app^.window) # set children [caption, content, select]
   return ()
     
 selectSudokus :: SudokuLens -> String -> StateT App IO Element
 selectSudokus lens caption = do
   app <- S.get
-  let sdks = Control.Lens.view lens app
-      options = map (\(Sudoku sid _) -> UI.option C.# C.set value (show sid) C.# C.set text (show sid)) sdks
+  let sdks = view lens app
+      options = map (\(Sudoku sid _) -> UI.option # set value (show sid) # set text (show sid)) sdks
 
   select <- lift $ UI.select #. "selectSudoku" #+ options
 
   -- Show the selected sudoku on selection change
   lift $ on UI.selectionChange select  $ \(Just val) -> do
-    let chosenSudoku = getSudoku sdks $ getSID (sdks!!val)
-        setter = Control.Lens.set lens 
-        -- The chosen sudoku should be the first in the select box
-        sudokusOfBox = chosenSudoku : filter (\(Sudoku sid _) -> sid /= getSID (sdks!!val)) sdks
+    let sudokuWithId :: Int -> SudokuWithId
+        sudokuWithId searchId = head $ filter (\(Sudoku sid _) -> sid == searchId) sdks 
+        getIdOfNthSudoku nth = let (Sudoku sid _) = (sdks!!nth) in sid
+        -- This is the sudoku selected in the select box
+        selectedSudoku = sudokuWithId $ getIdOfNthSudoku val
+        -- The selected sudoku should be the first in the select box
+        sudokusOfBox = selectedSudoku : filter (selectedSudoku /=) sdks
 
     evalStateT
       -- Sets the sudokus of the select box
       (do
-        state <- S.get
-        put $ setter sudokusOfBox state
-        return ()
+        modify $ Control.Lens.set lens sudokusOfBox 
         -- redraw the body
-     >> showSudoku)
-      -- Update the state with the chosenSudoku
-      (Control.Lens.set chosen chosenSudoku app)
-    return ()
+        showSudoku
+        return ())
+      -- Update the state with the selectedSudoku
+      (Control.Lens.set chosen selectedSudoku app)
 
-  lift $ UI.div #+ [UI.h1 C.# C.set text caption, C.element select]
+  -- Create the select box with a caption
+  lift $ UI.div #+ [UI.h1 # set text caption, element select]
 
-  where
-    getSudoku :: [SudokuWithId] -> Int -> SudokuWithId
-    getSudoku sdks id = head $ filter (\(Sudoku sid _) -> sid == id) sdks
-    getSID (Sudoku sid _) = sid
-
+-- Separates the cells into 9 sudoku blocks and concatenates them
 sudokuGrid :: [IO Element] -> [IO Element]
 sudokuGrid cells =  concatMap (concat . blockify [[],[],[]]) $ chunksOf 27 cells
   where
-    -- Separates 27 cells into 3 sudoku squares
     blockify :: [[IO Element]] -> [IO Element] -> [[IO Element]]
-    blockify acc [] = map makeSquare acc
-      where
-      makeSquare cells = [UI.div #. "square" #+ cells]
-
+    blockify blocks [] = [ [UI.div #. "square" #+ cs] | cs <- blocks]
     blockify acc cs = blockify (zipWith (++) acc row ) restCells
       where
       row = chunksOf 3 $ take 9 cs
@@ -145,21 +132,21 @@ createCell r c (Sudoku _ digits) =
 
    do
     cell <- UI.div #. classes
-    cellInput <- UI.input C.# C.set (attr "maxlength") "1"
+    cellInput <- UI.input # set (attr "maxlength") "1"
 
     -- Change background of a digit square on value change
     on UI.valueChange cellInput $ \val -> do
       if val == "" then
-        return cell C.#. classes
+        return cell #. classes
         else if read val == solution then
-               return cell C.#. (classes ++ " right")
+               return cell #. (classes ++ " right")
              else
-               return cell C.#. (classes ++ " wrong")
+               return cell #. (classes ++ " wrong")
       return ()
 
     -- Mark the free digits 
     case (sudoku!!r)!!c of
-      Free _ -> return cellInput C.# C.set value (show solution) C.# C.set (attr "readonly") "true" C.#. "free"
-      _ -> return cellInput C.# C.set value ""
+      Free _ -> element cellInput # set value (show solution) # set (attr "readonly") "true" #. "free"
+      _ -> element cellInput # set value ""
 
-    return cell C.#+ [return cellInput]
+    element cell #+ [return cellInput]

@@ -4,8 +4,8 @@ module Common where
 type RawSudoku = [[Int]]
 data RawSudokuWithId = RawS Int RawSudoku
 
-data Digit = Guess Int | Free Int deriving (Show, Read) -- a digit is either visible to
+data Digit = Guess Int | Free Int deriving (Show, Read, Eq) -- a digit is either visible to
                            -- the user (=Free) oder has to be guessed
                            -- (= Guess)
 type Sudoku = [Digit] -- a Sudoku consists of rows of digits
-data SudokuWithId = Sudoku Int [Digit] deriving (Show, Read) 
+data SudokuWithId = Sudoku Int [Digit] deriving (Show, Read, Eq) 
