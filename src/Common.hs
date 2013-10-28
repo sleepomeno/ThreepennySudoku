@@ -8,4 +8,4 @@ data Digit = Guess Int | Free Int deriving (Show, Read) -- a digit is either vis
                            -- the user (=Free) oder has to be guessed
                            -- (= Guess)
 type Sudoku = [Digit] -- a Sudoku consists of rows of digits
-data SudokuWithId = Sudoku Int [Digit] deriving (Show, Read) -- a Sudoku consists of rows of digits
+data SudokuWithId = Sudoku Int [Digit] deriving (Show, Read) 

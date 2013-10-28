@@ -1,9 +1,6 @@
-{-# LANGUAGE CPP, RankNTypes, ScopedTypeVariables, TemplateHaskell , PackageImports, NoMonomorphismRestriction #-}
+{-# LANGUAGE CPP, RankNTypes, TemplateHaskell , PackageImports, NoMonomorphismRestriction #-}
 
 module Main where
-
-import Control.Monad
--- import Safe
 
 #ifdef CABAL
 import qualified  "threepenny-gui" Graphics.UI.Threepenny as UI
@@ -18,15 +15,17 @@ import Common
 import System.FilePath((</>))
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.State as S
-import Control.Lens
+import Control.Lens hiding (chosen)
 
 data App = App { _easy :: [SudokuWithId],
-                            _medium :: [SudokuWithId],
-                            _hard :: [SudokuWithId],
-                            _insane :: [SudokuWithId],
-                            _window :: Window,
-                            _chosen :: SudokuWithId }
+                _medium :: [SudokuWithId],
+                _hard :: [SudokuWithId],
+                _insane :: [SudokuWithId],
+                _window :: Window,
+                _chosen :: SudokuWithId }
 makeLenses ''App
+
+type SudokuLens = Lens App App [SudokuWithId] [SudokuWithId] 
 
 main :: IO ()
 main = do
@@ -59,8 +58,10 @@ mysetup =  do
   let win = app^.window
   -- lift $ return (win C.# C.set title "Sudoku")
   lift $ UI.addStyleSheet win "sudoku.css"
-
   showSudoku
+
+
+  -- 00 01 02 10 11 12 20 21 22 03 04 05 13 14 15 23 24 25
 
 showSudoku :: StateT App IO ()
 showSudoku  = do
@@ -72,31 +73,40 @@ showSudoku  = do
   selectMedium <- selectSudokus medium "Medium"
   selectHard <- selectSudokus hard "Hard"
   selectInsane <- selectSudokus insane "Insane"
-  let sudokus :: [IO Element]
-      sudokus = [return selectEasy, return selectMedium, return selectHard, return selectInsane] 
+  let sudokus = map return [selectEasy, selectMedium, selectHard, selectInsane] 
+                
   select <- lift $ UI.div #. "selectSudokus" #+ sudokus
   content <- lift $ UI.div #. "sudoku" #+ sudokuGrid [createCell row col chosenSdk | row <- [0..8], col <- [0..8]] 
+
+  -- (Re)draws the whole html body
   lift $ getBody (app^.window) C.# C.set C.children [caption, content, select]
   return ()
     
-selectSudokus :: Lens App App [SudokuWithId] [SudokuWithId] -> String -> StateT App IO Element
+selectSudokus :: SudokuLens -> String -> StateT App IO Element
 selectSudokus lens caption = do
   app <- S.get
-  let getter = Control.Lens.view lens
-  let setter = Control.Lens.set lens 
-  let sdks = getter app
-  let options = map (\(Sudoku sid _) -> UI.option C.# C.set value (show sid) C.# C.set text (show sid)) sdks
+  let sdks = Control.Lens.view lens app
+      options = map (\(Sudoku sid _) -> UI.option C.# C.set value (show sid) C.# C.set text (show sid)) sdks
+
   select <- lift $ UI.select #. "selectSudoku" #+ options
 
+  -- Show the selected sudoku on selection change
   lift $ on UI.selectionChange select  $ \(Just val) -> do
     let chosenSudoku = getSudoku sdks $ getSID (sdks!!val)
-        restSudoku = chosenSudoku : filter (\(Sudoku sid _) -> sid /= getSID (sdks!!val)) sdks
-    evalStateT (do
-                   state <- S.get
-                   put $ setter restSudoku state
-                   return ()
-                >> showSudoku)
-      app { _chosen = chosenSudoku } 
+        setter = Control.Lens.set lens 
+        -- The chosen sudoku should be the first in the select box
+        sudokusOfBox = chosenSudoku : filter (\(Sudoku sid _) -> sid /= getSID (sdks!!val)) sdks
+
+    evalStateT
+      -- Sets the sudokus of the select box
+      (do
+        state <- S.get
+        put $ setter sudokusOfBox state
+        return ()
+        -- redraw the body
+     >> showSudoku)
+      -- Update the state with the chosenSudoku
+      (Control.Lens.set chosen chosenSudoku app)
     return ()
 
   lift $ UI.div #+ [UI.h1 C.# C.set text caption, C.element select]
@@ -105,31 +115,20 @@ selectSudokus lens caption = do
     getSudoku :: [SudokuWithId] -> Int -> SudokuWithId
     getSudoku sdks id = head $ filter (\(Sudoku sid _) -> sid == id) sdks
     getSID (Sudoku sid _) = sid
-    
 
 sudokuGrid :: [IO Element] -> [IO Element]
-sudokuGrid cells =  concat [makePartition firstThird, makePartition secondThird, makePartition thirdThird]
+sudokuGrid cells =  concatMap (concat . blockify [[],[],[]]) $ chunksOf 27 cells
   where
-    firstThird = take 27 cells
-    secondThird = take 27 $ drop 27 cells
-    thirdThird = drop 54 cells
-
-    makePartition :: [IO Element] -> [IO Element]
-    makePartition cs = concat $ partitionCells cs [[],[],[]]
+    -- Separates 27 cells into 3 sudoku squares
+    blockify :: [[IO Element]] -> [IO Element] -> [[IO Element]]
+    blockify acc [] = map makeSquare acc
       where
-        -- Separates 27 cells into 3 sudo squares
-        partitionCells :: [IO Element] -> [[IO Element]] -> [[IO Element]]
-        partitionCells [] acc = [makeSquare (acc!!0), makeSquare (acc!!1), makeSquare (acc!!2)]
-                                where
-                                makeSquare :: [IO Element] -> [IO Element]
-                                makeSquare cells = [UI.div #. "square" #+ cells]
-        partitionCells cs acc = partitionCells restCells [acc!!0 ++ firstThree, acc!!1 ++ secondThree, acc!!2 ++ thirdThree]
-          where
-            firstThree = take 3 cs
-            secondThree = take 3 $ drop 3 cs
-            thirdThree = take 3 $ drop 6 cs
-            restCells = drop 9 cs
+      makeSquare cells = [UI.div #. "square" #+ cells]
 
+    blockify acc cs = blockify (zipWith (++) acc row ) restCells
+      where
+      row = chunksOf 3 $ take 9 cs
+      restCells = drop 9 cs
     
 createCell :: Int -> Int -> SudokuWithId -> IO Element
 createCell r c (Sudoku _ digits) =
