@@ -28,12 +28,12 @@ Library
   Exposed-modules: Solver
   Other-modules:        Paths_sudoku
   CPP-Options:      -DCABAL
-  build-depends:       safe, base ==4.5.*, threepenny-gui ==0.3.0.0, filepath, hxt, HandsomeSoup, tagsoup, split ==0.2.2, vector, HTTP, lens ==3.10
+  build-depends:       safe, base ==4.6.*, threepenny-gui , filepath, hxt, HandsomeSoup, tagsoup, split ==0.2.2, vector, HTTP, lens ==3.10, HDBC-sqlite3
 
 executable sudoku
   if flag(buildExamples)
      cpp-options: -DCABAL
-     build-depends:       safe, base ==4.5.*, threepenny-gui ==0.3.0.0, filepath, hxt, HTTP, vector, split ==0.2.2, lens ==3.10
+     build-depends:       safe, base ==4.6.*, threepenny-gui , filepath, hxt, HTTP, vector, split ==0.2.2, lens ==3.10, transformers,HDBC-sqlite3, HDBC
   else
      buildable: False
   main-is:        Sudoku.hs
@@ -43,7 +43,7 @@ executable sudoku
 executable scraper
   if flag(buildExamples)
      cpp-options: -DCABAL
-     build-depends: base, HTTP ==4000.2.2, vector, split ==0.2.2, tagsoup, hxt
+     build-depends: base, HTTP, vector, split ==0.2.2, tagsoup, hxt, HDBC-sqlite3, HDBC
   else
      buildable: False
   main-is:        SudokuScraper.hs

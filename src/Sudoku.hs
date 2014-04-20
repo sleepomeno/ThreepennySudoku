@@ -10,6 +10,7 @@ import qualified Graphics.UI.Threepenny as UI
 import Graphics.UI.Threepenny.Core
 #endif
 import Paths
+import Data.List(groupBy,sort)
 import Data.List.Split
 import Common
 import System.FilePath((</>),(<.>))
@@ -17,6 +18,8 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.State as S
 import Control.Lens ((^.), Lens', makeLenses, view)
 import qualified Control.Lens (set)
+import Database.HDBC
+import Database.HDBC.Sqlite3
 
 data App = App { _easy :: [SudokuWithId],
                 _medium :: [SudokuWithId],
@@ -28,31 +31,39 @@ makeLenses ''App
 
 type SudokuLens = Lens' App [SudokuWithId] 
 
+
+
 main :: IO ()
 main = do
     static <- getStaticDir
-    -- sudoku-files pattern: <static>/sudokus/<difficulty>.sudoku
-    let sudokus = map (\x -> static </> "sudokus" </> x <.> "sudoku") ["easy", "medium", "hard", "insane"]
-    [easySudokus, mediumSudokus, hardSudokus, insaneSudokus] <- mapM readSudokus sudokus
+    let database = static </> db -- database file is in /wwwroot
+    [easySudokus, mediumSudokus, hardSudokus, insaneSudokus] <- readSudokus database
 
-    let initialState = App { _chosen = head easySudokus, _easy = easySudokus, _medium = mediumSudokus, _hard = hardSudokus, _insane = insaneSudokus} 
+    let initialState w = App { _chosen = head easySudokus, _easy = easySudokus, _medium = mediumSudokus, _hard = hardSudokus, _insane = insaneSudokus, _window = w } 
 
         -- Run the application with the initial configuration
-        executeApplication w = evalStateT mysetup initialState { _window = w }
+        executeApplication w = evalStateT mysetup $ initialState w
 
     startGUI defaultConfig
-        { tpPort       = 10000
+        { tpPort       = Just 10000
         , tpStatic     = Just static
         } executeApplication
 
-readSudokus :: String -> IO [SudokuWithId]
-readSudokus filename = do
-  content <- readFile filename
-  let mySudokus :: [SudokuWithId]
-      mySudokus =  read content
-  return mySudokus
+fromSQLRow [sqlId, sqlLevel, sqlContent] =
+  let id = (fromSql sqlId) :: Integer
+      level = (fromSql sqlLevel) :: String
+      content = (fromSql sqlContent) :: String in
+  Sudoku id (read level) (read content)
 
-mysetup :: StateT App IO ()
+readSudokus :: FilePath -> IO [[SudokuWithId]]
+readSudokus database  = do
+  conn <- connectSqlite3 database
+  rows <- quickQuery' conn "SELECT * FROM sudokus" []
+  Database.HDBC.disconnect conn
+  let sudokus = groupBy (\(Sudoku _ l1 _) (Sudoku _ l2 _) -> l1 == l2) $ sort $ map fromSQLRow rows
+  return sudokus
+
+mysetup :: StateT App UI ()
 mysetup =  do
   app <- S.get
   let win = app^.window
@@ -60,11 +71,11 @@ mysetup =  do
   lift $ UI.addStyleSheet win "sudoku.css"
   showSudoku
 
-showSudoku :: StateT App IO ()
+showSudoku :: StateT App UI ()
 showSudoku  = do
   app <- S.get
   let sdkToDisplay = view chosen app
-      (Sudoku sid _) = sdkToDisplay
+      (Sudoku sid _ _) = sdkToDisplay
   caption <- lift $ UI.h1 # set text ("Sudoku " ++ show sid)
   sudokus <- mapM (uncurry $ flip selectSudokus) [("Easy", easy),("Medium",medium),("Hard",hard),("Insane",insane)]
                 
@@ -75,19 +86,19 @@ showSudoku  = do
   lift $ getBody (app^.window) # set children [caption, content, select]
   return ()
     
-selectSudokus :: SudokuLens -> String -> StateT App IO Element
+selectSudokus :: SudokuLens -> String -> StateT App UI Element
 selectSudokus lens caption = do
   app <- S.get
   let sdks = view lens app
-      options = map (\(Sudoku sid _) -> UI.option # set value (show sid) # set text (show sid)) sdks
+      options = map (\(Sudoku sid _ _) -> UI.option # set value (show sid) # set text (show sid)) sdks
 
   select <- lift $ UI.select #. "selectSudoku" #+ options
 
   -- Show the selected sudoku on selection change
   lift $ on UI.selectionChange select  $ \(Just val) -> do
-    let sudokuWithId :: Int -> SudokuWithId
-        sudokuWithId searchId = head $ filter (\(Sudoku sid _) -> sid == searchId) sdks 
-        getIdOfNthSudoku nth = let (Sudoku sid _) = (sdks!!nth) in sid
+    let sudokuWithId :: Integer -> SudokuWithId
+        sudokuWithId searchId = head $ filter (\(Sudoku sid _ _) -> sid == searchId) sdks 
+        getIdOfNthSudoku nth = let (Sudoku sid _ _) = (sdks!!nth) in sid
         -- This is the sudoku selected in the select box
         selectedSudoku = sudokuWithId $ getIdOfNthSudoku val
         -- The selected sudoku should be the first in the select box
@@ -107,18 +118,18 @@ selectSudokus lens caption = do
   lift $ UI.div #+ [UI.h1 # set text caption, element select]
 
 -- Separates the cells into 9 sudoku blocks and concatenates them
-sudokuGrid :: [IO Element] -> [IO Element]
+sudokuGrid :: [UI Element] -> [UI Element]
 sudokuGrid cells =  concatMap (concat . blockify [[],[],[]]) $ chunksOf 27 cells
   where
-    blockify :: [[IO Element]] -> [IO Element] -> [[IO Element]]
+    blockify :: [[UI Element]] -> [UI Element] -> [[UI Element]]
     blockify blocks [] = [ [UI.div #. "square" #+ cs] | cs <- blocks]
     blockify acc cs = blockify (zipWith (++) acc row ) restCells
       where
       row = chunksOf 3 $ take 9 cs
       restCells = drop 9 cs
     
-createCell :: Int -> Int -> SudokuWithId -> IO Element
-createCell r c (Sudoku _ digits) =
+createCell :: Int -> Int -> SudokuWithId -> UI Element
+createCell r c (Sudoku _ _ digits) =
   let row = show r
       col = show c
       sudoku = chunksOf 9 digits 

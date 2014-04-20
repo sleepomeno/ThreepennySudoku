@@ -8,38 +8,57 @@ import Control.Concurrent (threadDelay)
 import System.Environment (getArgs)
 import System.Exit
 import Common
+import Database.HDBC
+import Database.HDBC.Sqlite3
 
 data SudokuRequest = SudokuRequest { sid :: Int, url :: String }
 
-{-- These will be provided on the command line --}
--- sudokuRange :: [Int]
--- sudokuRange = [0..10]
--- sudokuStart :: Int
--- sudokuStart = 1000000000
 sudokuStringBase = "http://www.soduko.org/sudoku-print.php?id="
 
 exit    = exitSuccess
 usage = putStrLn "Usage SudokuScraper base number"          
-                   
-main = do
+
+main = handleSqlError $ do
   args <- getArgs
   case args of
-    [start,number] -> scrapeSudokus (read start) (read number)
-    _ -> putStrLn "Usage: ./SudokuScraper sudokuStart numberOfSudokus" >> exit
+    [] -> scrapeSudokus 
+    _ -> putStrLn "Usage: ./scraper" >> exit
+
+initDatabase :: IO ()
+initDatabase = do
+  conn <- connectSqlite3 db
+  run conn "CREATE TABLE sudokus (id INTEGER PRIMARY KEY, level VARCHAR(20), content VARCHAR(120))" []
+  commit conn
+  disconnect conn
+
+saveSudokus :: [SudokuWithLevel] -> IO ()
+saveSudokus sudokus = do
+  conn <- connectSqlite3 db
+  stmt <- prepare conn "INSERT INTO sudokus (level, content) VALUES (?,?)"
+  executeMany stmt sudokusToSql
+  commit conn
+  disconnect conn
+    where
+    sudokusToSql :: [[SqlValue]]
+    sudokusToSql = (`map` sudokus) $ \(SudokuL level digits) -> [toSql (show level), toSql (show digits)]
     
--- The scraping function which does the work
--- start : the first sudoku that will be fetched
--- number : the number-1 of sudokus that will be fetched starting from start
-scrapeSudokus :: Int -> Int -> IO ()
-scrapeSudokus  start number = do
-  let reqs = [SudokuRequest { sid = reqId, url = sudokuStringBase ++ show reqId }| offset <- [0..number], let reqId = start+offset]
+scrapeSudokus :: IO ()
+scrapeSudokus  = do
+  initDatabase
+  sudokusToSave <- mapM scrapeSudokusOfLevel levels
+  saveSudokus $ concat sudokusToSave
+
+scrapeSudokusOfLevel :: Level -> IO [SudokuWithLevel]
+scrapeSudokusOfLevel (Level start number level) = do
+  let reqs = [SudokuRequest { sid = reqId, url = sudokuStringBase ++ show reqId }| offset <- [0..number], let reqId = fromIntegral start + offset]
+
   sudokus <- mapM getSudoku reqs
-  let getSolvedSudokus = [Sudoku sid $ toSudoku prob sol | sudoku@(RawS sid _) <- sudokus, let prob = toString sudoku, let sol = solveSudoku prob]
-  print getSolvedSudokus
+  return [SudokuL level $ toSudoku prob sol | sudoku <- sudokus, let prob = toString sudoku, let sol = solveSudoku prob]
+
 
 -- Requests the HTML page and parses the Sudoku. Returns the sudoku as
 -- a list of digits
-getSudoku :: SudokuRequest -> IO RawSudokuWithId
+getSudoku :: SudokuRequest -> IO RawSudoku
 getSudoku req = do
   resp <- Network.HTTP.simpleHTTP $ getRequest $ url req
   -- let's wait a little bit so that sudoku.org does not hate us
@@ -51,17 +70,18 @@ getSudoku req = do
       allSquares = let beautify (Just x) = if x == "\160" then 0 else read x :: Int
                        beautify _ = error "No Nothing allowed" in
                    map beautify allSquaresRaw
-  return $ RawS (sid req) $ toLines $ chunksOf 9 allSquares
+  putStrLn $ "Scraped sudoku with id " ++ show (sid req)
+  return $ toLines $ chunksOf 9 allSquares
 
 
 -- Transforms a Sudoku given by a list of squares of digits into a Sudoko given by a list of rows of digits
-toLines :: RawSudoku -> RawSudoku
+toLines :: [[Int]] -> RawSudoku
 toLines squares = 
   let
     square1To3 = take 3 squares 
     square4To6 = take 3 $ drop 3 squares
     square7To9 = drop 6 squares in
-  squaresToLines' square1To3 ++ squaresToLines' square4To6 ++ squaresToLines' square7To9
+  RawS $ squaresToLines' square1To3 ++ squaresToLines' square4To6 ++ squaresToLines' square7To9
 
 -- Takes three horizontally linked sudoku squares and returns the
 -- corresponding sudoku rows
@@ -76,8 +96,8 @@ squaresToLines' squares =
     snd3 = slice 3 6
     thrd3 = slice 6 9
 
-toString :: RawSudokuWithId -> String
-toString (RawS _ rows) = concatMap show $ concat rows
+toString :: RawSudoku -> String
+toString (RawS rows) = concatMap show $ concat rows
 
 -- Takes the sudoku problem specifation and its solution and returns a
                          -- sudoku representation filling in the free
