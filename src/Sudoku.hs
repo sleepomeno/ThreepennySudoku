@@ -19,8 +19,9 @@ import Control.Monad(void)
 import Control.Monad.Trans.Class
 import Data.Time
 import Control.Monad.Trans.State as S
-import Control.Lens ((^.), Lens', makeLenses, view)
-import qualified Control.Lens (set)
+import Control.Lens ((^.),(&),Lens', makeLenses, view)
+import Control.Lens.Getter (use)
+import Control.Lens.Setter ((.=), (.~))
 import Database.HDBC
 import Database.HDBC.Sqlite3
 
@@ -49,7 +50,7 @@ main = do
         executeApplication w = evalStateT mysetup $ initialState w
 
     startGUI defaultConfig
-        { tpPort       = Just 10000
+        { tpPort       =  10000
         , tpStatic     = Just static
         } executeApplication
 
@@ -69,37 +70,35 @@ readSudokus database  = do
 
 mysetup :: StateT App UI ()
 mysetup =  do
-  app <- S.get
-  let win = app^.window
+  win <- use window
   -- lift $ return (win C.# C.set title "Sudoku")
   lift $ UI.addStyleSheet win "sudoku.css"
-  mytimer <- lift  UI.timer
+  mytimer <- lift UI.timer
   lift $ UI.start mytimer
-  modify $ Control.Lens.set timer mytimer
+  timer .= mytimer
   now <- liftIO getCurrentTime
-  modify $ Control.Lens.set startTime now
+  startTime .= now
   showSudoku
 
 
   
 showSudoku :: StateT App UI ()
 showSudoku  = do
-  app <- S.get
-  let sdkToDisplay = view chosen app
-      (Sudoku sid _ _) = sdkToDisplay
-      mytimer = view timer app
-      mywindow = view window app
-      mystartTime = view startTime app
+  sdkToDisplay <- use chosen
+  let (Sudoku sid _ _) = sdkToDisplay
+  mytimer <- use timer
+  mywindow <- use window
+  mystartTime <- use startTime
+
   caption <- lift $ UI.h1 # set text ("Sudoku " ++ show sid)
   sudokus <- mapM (uncurry $ flip selectSudokus) [("Easy", easy),("Medium",medium),("Hard",hard),("Insane",insane)]
   time <- lift $ UI.h1 # set text "Time: "
   select <- lift $ UI.div #. "selectSudokus" #+ map return sudokus
   content <- lift $ UI.div #. "sudoku" #+ sudokuGrid [createCell row col sdkToDisplay | row <- [0..8], col <- [0..8]] 
 
-  now <- liftIO getCurrentTime
   liftIO $ Reactive.Threepenny.register (UI.tick mytimer) $ const $ runUI mywindow $ showTime (return time) mystartTime
   -- (Re)draws the whole html body
-  lift $ getBody (app^.window) # set children [caption, content, select, time]
+  lift $ getBody mywindow # set children [caption, content, select, time]
   return ()
   where
     showTime time mystartTime = do
@@ -110,8 +109,8 @@ showSudoku  = do
 selectSudokus :: SudokuLens -> String -> StateT App UI Element
 selectSudokus lens caption = do
   app <- S.get
-  let sdks = view lens app
-      options = map (\(Sudoku sid _ _) -> UI.option # set value (show sid) # set text (show sid)) sdks
+  sdks <- use lens
+  let options = map (\(Sudoku sid _ _) -> UI.option # set value (show sid) # set text (show sid)) sdks
 
   select <- lift $ UI.select #. "selectSudoku" #+ options
 
@@ -126,16 +125,16 @@ selectSudokus lens caption = do
         sudokusOfBox = selectedSudoku : filter (selectedSudoku /=) sdks
     now <- liftIO getCurrentTime
 
+    
     evalStateT
       -- Sets the sudokus of the select box
       (do
-        modify $ Control.Lens.set lens sudokusOfBox 
-        modify $ Control.Lens.set startTime now
+       lens .= sudokusOfBox
+       startTime .= now
         -- redraw the body
-        showSudoku
-        return ())
+       showSudoku)
       -- Update the state with the selectedSudoku
-      (Control.Lens.set chosen selectedSudoku app)
+      (app & chosen .~ selectedSudoku)
 
   -- Create the select box with a caption
   lift $ UI.div #+ [UI.h1 # set text caption, element select]
