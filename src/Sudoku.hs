@@ -10,11 +10,14 @@ import qualified Graphics.UI.Threepenny as UI
 import Graphics.UI.Threepenny.Core
 #endif
 import Paths
+import Reactive.Threepenny
 import Data.List(groupBy,sort)
 import Data.List.Split
 import Common
 import System.FilePath((</>),(<.>))
+import Control.Monad(void)
 import Control.Monad.Trans.Class
+import Data.Time
 import Control.Monad.Trans.State as S
 import Control.Lens ((^.), Lens', makeLenses, view)
 import qualified Control.Lens (set)
@@ -26,15 +29,16 @@ data App = App { _easy :: [SudokuWithId],
                 _hard :: [SudokuWithId],
                 _insane :: [SudokuWithId],
                 _window :: Window,
-                _chosen :: SudokuWithId }
+                _chosen :: SudokuWithId,
+                _startTime :: UTCTime,
+                _timer :: UI.Timer}
 makeLenses ''App
 
 type SudokuLens = Lens' App [SudokuWithId] 
 
-
-
 main :: IO ()
 main = do
+
     static <- getStaticDir
     let database = static </> db -- database file is in /wwwroot
     [easySudokus, mediumSudokus, hardSudokus, insaneSudokus] <- readSudokus database
@@ -69,22 +73,39 @@ mysetup =  do
   let win = app^.window
   -- lift $ return (win C.# C.set title "Sudoku")
   lift $ UI.addStyleSheet win "sudoku.css"
+  mytimer <- lift  UI.timer
+  lift $ UI.start mytimer
+  modify $ Control.Lens.set timer mytimer
+  now <- liftIO getCurrentTime
+  modify $ Control.Lens.set startTime now
   showSudoku
 
+
+  
 showSudoku :: StateT App UI ()
 showSudoku  = do
   app <- S.get
   let sdkToDisplay = view chosen app
       (Sudoku sid _ _) = sdkToDisplay
+      mytimer = view timer app
+      mywindow = view window app
+      mystartTime = view startTime app
   caption <- lift $ UI.h1 # set text ("Sudoku " ++ show sid)
   sudokus <- mapM (uncurry $ flip selectSudokus) [("Easy", easy),("Medium",medium),("Hard",hard),("Insane",insane)]
-                
+  time <- lift $ UI.h1 # set text "Time: "
   select <- lift $ UI.div #. "selectSudokus" #+ map return sudokus
   content <- lift $ UI.div #. "sudoku" #+ sudokuGrid [createCell row col sdkToDisplay | row <- [0..8], col <- [0..8]] 
 
+  now <- liftIO getCurrentTime
+  liftIO $ Reactive.Threepenny.register (UI.tick mytimer) $ const $ runUI mywindow $ showTime (return time) mystartTime
   -- (Re)draws the whole html body
-  lift $ getBody (app^.window) # set children [caption, content, select]
+  lift $ getBody (app^.window) # set children [caption, content, select, time]
   return ()
+  where
+    showTime time mystartTime = do
+      now <- liftIO getCurrentTime
+      time # set text (show $ diffUTCTime now mystartTime)
+      return ()
     
 selectSudokus :: SudokuLens -> String -> StateT App UI Element
 selectSudokus lens caption = do
@@ -103,11 +124,13 @@ selectSudokus lens caption = do
         selectedSudoku = sudokuWithId $ getIdOfNthSudoku val
         -- The selected sudoku should be the first in the select box
         sudokusOfBox = selectedSudoku : filter (selectedSudoku /=) sdks
+    now <- liftIO getCurrentTime
 
     evalStateT
       -- Sets the sudokus of the select box
       (do
         modify $ Control.Lens.set lens sudokusOfBox 
+        modify $ Control.Lens.set startTime now
         -- redraw the body
         showSudoku
         return ())
