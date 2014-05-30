@@ -80,3 +80,15 @@ input {
 .cell input.free {
     font-style: italic;
 }
+.selectSudokus.highlighted {
+    background-color: #DDDDDD;
+}
+
+.hide {
+    visibility: hidden;
+    }
+.welcome.hide {
+    visibility: hidden;
+    height: 0;
+    width: 0;
+    }

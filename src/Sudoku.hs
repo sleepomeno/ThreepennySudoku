@@ -1,4 +1,4 @@
-{-# LANGUAGE CPP, RankNTypes, TemplateHaskell , PackageImports, NoMonomorphismRestriction #-}
+{-# LANGUAGE CPP, RecursiveDo, RankNTypes, TemplateHaskell , PackageImports, NoMonomorphismRestriction #-}
 
 module Main where
 
@@ -14,8 +14,9 @@ import Reactive.Threepenny
 import Data.List(groupBy,sort)
 import Data.List.Split
 import Common
+import Data.Maybe (listToMaybe, isJust, fromMaybe, fromJust)
 import System.FilePath((</>),(<.>))
-import Control.Monad(void)
+import Control.Monad(void,liftM,sequence,forM)
 import Control.Monad.Trans.Class
 import Data.Time
 import Control.Monad.Trans.State as S
@@ -24,6 +25,7 @@ import Control.Lens.Getter (use)
 import Control.Lens.Setter ((.=), (.~))
 import Database.HDBC
 import Database.HDBC.Sqlite3
+import System.IO.Unsafe (unsafePerformIO)
 
 data App = App { _easy :: [SudokuWithId],
                 _medium :: [SudokuWithId],
@@ -42,17 +44,21 @@ main = do
 
     static <- getStaticDir
     let database = static </> db -- database file is in /wwwroot
-    [easySudokus, mediumSudokus, hardSudokus, insaneSudokus] <- readSudokus database
+    sudokus@[easySudokus, mediumSudokus, hardSudokus, insaneSudokus] <- readSudokus database
 
     let initialState w = App { _chosen = head easySudokus, _easy = easySudokus, _medium = mediumSudokus, _hard = hardSudokus, _insane = insaneSudokus, _window = w } 
 
         -- Run the application with the initial configuration
         executeApplication w = evalStateT mysetup $ initialState w
 
+    -- startGUI defaultConfig
+    --     { tpPort       =  10000
+    --     , tpStatic     = Just static
+    --     } executeApplication
     startGUI defaultConfig
         { tpPort       =  10000
         , tpStatic     = Just static
-        } executeApplication
+        } (runApp $ zip ["Easy", "Medium", "Hard", "Insane"] sudokus)
 
 fromSQLRow [sqlId, sqlLevel, sqlContent] =
   let id = (fromSql sqlId) :: Integer
@@ -80,7 +86,84 @@ mysetup =  do
   startTime .= now
   showSudoku
 
+selectSudoku' :: [SudokuWithId] -> UI (UI.ListBox String, Event String)
+selectSudoku' sudokus = mdo
+  let firstId = case head sudokus of { (Sudoku sid _ _) -> show sid }
+  listBox <- UI.listBox bItems bSelection bDisplayItem
+  let eSelection = rumors $ UI.userSelection listBox
+  bSelection <- stepper (Just firstId) eSelection
+  let options = map (\(Sudoku sid _ _) -> show sid) sudokus
+  bItems <- stepper options never :: UI (Behavior [String])
+  let bDisplayItem = pure UI.string :: Behavior (String -> UI Element)
+  -- bJustSelection <- stepper firstId (filterJust eSelection)
+  
+  return (listBox, filterJust eSelection)
 
+findSudoku :: [SudokuWithId] -> Integer -> SudokuWithId
+findSudoku sudokus sid = head $ filter (\(Sudoku sid' _ _ ) -> sid' == sid) sudokus 
+
+runApp :: [(String,[SudokuWithId])] -> Window -> UI ()
+runApp sudokus w = void $ mdo
+  UI.addStyleSheet w "sudoku.css"
+  let fstSudokuId (Sudoku sid _ _:_) = show sid
+  let (levels, sudokus') = unzip sudokus
+  caption <- UI.h1
+
+  listBoxAndEvent <- mapM selectSudoku' sudokus'
+  let (listBoxes, eListBoxes) = unzip listBoxAndEvent
+  
+  bListBox <- (stepper Nothing $ Just <$> head <$> unions eListBoxes) :: UI (Behavior (Maybe String))
+  let bSudoku = fmap (findSudoku (concat sudokus') . read) <$> bListBox :: Behavior (Maybe SudokuWithId)
+      bCaption = maybe "Welcome to Sudoku Land!" ("Sudoku "++) <$> bListBox
+
+  cells <- sequence [createCell' col row digit | row <- [0..8], col <- [0..8], let digit  = fmap ((!!col) . (!!row) . chunksOf 9 . extractDigits ) <$> bSudoku ]
+  let cellElems = fmap (return . fst) cells
+  let bChoose = (\x -> if isJust x then "welcome hide" else "welcome") <$> bListBox 
+      bSudokuGrid = (\x -> if isJust x then "sudoku" else "sudoku hide") <$> bListBox
+  choose <- UI.div #. "welcome" #+ [UI.h2 # set text "Choose a Sudoku ->"]
+  element choose # sink UI.class_ bChoose
+  content <- UI.div 
+  element content # sink UI.class_ bSudokuGrid #+ sudokuGrid cellElems
+  
+  levelCaptions <- forM levels $ \x -> UI.h2 # set text x 
+
+  selects <- forM  (zip3 listBoxes levelCaptions [0..3]) $
+             \(listBox,level,nr) -> do
+             let otherEvents = take nr eListBoxes ++ drop (nr+1) eListBoxes
+             let ownEvent = eListBoxes!!nr
+             let container = UI.div
+             bWrapperClass <- stepper "selectSudokus" $ head <$> unions ["selectSudokus" <$ (head <$> unions otherEvents), "selectSudokus highlighted" <$ ownEvent]
+             container # sink UI.class_ bWrapperClass #+ [element level, (element . getElement) listBox]
+  element caption # sink text bCaption
+  getBody w # set children ([caption, choose, content] ++ selects)
+
+
+createCell' :: Int -> Int -> Behavior (Maybe Digit) -> UI (Element, Event String)
+createCell' x y digit =
+  let classes = "cell row"++show y++"col"++show x
+      isFree digit' = case digit' of { (Guess _) -> True; _ -> False}
+      digitString digit' = case digit' of
+        (Guess _) -> ""
+        (Free a) -> show a
+      in
+   do
+     cell <- UI.div #. classes
+     
+     cellInput <- UI.entry (maybe "" digitString <$> digit) 
+     -- digitValue <- currentValue digit
+     -- (element . getElement) cellInput # set text (digitString digitValue) 
+     element cellInput # sink UI.enabled (maybe False isFree <$> digit)
+
+     (element . getElement) cellInput # set (attr "maxlength") "1"
+     element cell # set children [getElement cellInput]
+     let bDigit = UI.userText cellInput
+         eInput = rumors bDigit
+         eInputClasses = ((\x y -> maybe "" (\v -> case v of { (Guess z) -> if z == read y then classes ++ " right" else classes ++ " wrong"; (Free _) -> classes }) x) <$> digit) <@> eInput 
+         
+     bInputClasses <- stepper classes eInputClasses
+     element cell # sink UI.class_ bInputClasses
+     
+     return (cell, eInput)
   
 showSudoku :: StateT App UI ()
 showSudoku  = do
@@ -98,6 +181,16 @@ showSudoku  = do
 
   liftIO $ Reactive.Threepenny.register (UI.tick mytimer) $ const $ runUI mywindow $ showTime (return time) mystartTime
   -- (Re)draws the whole html body
+
+  -- (listBox, caption) <- lift mysetup'
+  -- listBox' <- element listBox
+  -- caption' <- element caption
+
+  -- testC <- testCellBeh
+  -- (mycell, eMycell) <- lift $ createCell' 1 2 testC
+
+  
+  
   lift $ getBody mywindow # set children [caption, content, select, time]
   return ()
   where
@@ -127,7 +220,7 @@ selectSudokus lens caption = do
 
     
     evalStateT
-      -- Sets the sudokus of the select box
+
       (do
        lens .= sudokusOfBox
        startTime .= now
@@ -149,7 +242,10 @@ sudokuGrid cells =  concatMap (concat . blockify [[],[],[]]) $ chunksOf 27 cells
       where
       row = chunksOf 3 $ take 9 cs
       restCells = drop 9 cs
-    
+
+-- taken from Network-CGI-Protocol package
+maybeRead = fmap fst . listToMaybe . reads
+
 createCell :: Int -> Int -> SudokuWithId -> UI Element
 createCell r c (Sudoku _ _ digits) =
   let row = show r
