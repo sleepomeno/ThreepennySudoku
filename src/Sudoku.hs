@@ -11,7 +11,7 @@ import Graphics.UI.Threepenny.Core
 #endif
 import Paths
 import Reactive.Threepenny
-import Data.List(groupBy,sort)
+import Data.List(groupBy,sort,isPrefixOf)
 import Data.List.Split
 import Common
 import Data.Maybe (listToMaybe, isJust, fromMaybe, fromJust)
@@ -86,13 +86,27 @@ mysetup =  do
   startTime .= now
   showSudoku
 
-selectSudoku' :: [SudokuWithId] -> UI (UI.ListBox String, Event String)
-selectSudoku' sudokus = mdo
+selectSudoku' :: [SudokuWithId] -> [Event String]-> UI (UI.ListBox String, Event String)
+selectSudoku' sudokus eListBoxes = mdo
   let firstId = case head sudokus of { (Sudoku sid _ _) -> show sid }
+      choose = "--- choose a Sudoku ---"
   listBox <- UI.listBox bItems bSelection bDisplayItem
   let eSelection = rumors $ UI.userSelection listBox
-  bSelection <- stepper (Just firstId) eSelection
-  let options = map (\(Sudoku sid _ _) -> show sid) sudokus
+  bSelection <- stepper (Just choose) $ head <$> unions [eSelection, Just choose <$ unions eListBoxes]
+  let options = choose : map (\(Sudoku sid _ _) -> show sid) sudokus
+  bItems <- stepper options never :: UI (Behavior [String])
+  let bDisplayItem = pure UI.string :: Behavior (String -> UI Element)
+  -- bJustSelection <- stepper firstId (filterJust eSelection)
+  
+  return (listBox, filterJust eSelection)
+
+
+selectSudoku'' :: [SudokuWithId] -> Behavior (Maybe String) -> UI (UI.ListBox String, Event String)
+selectSudoku'' sudokus bSelection = mdo
+  let choose = "--- choose a Sudoku ---"
+  listBox <- UI.listBox bItems bSelection bDisplayItem
+  let eSelection = rumors $ UI.userSelection listBox
+  let options = choose : map (\(Sudoku sid _ _) -> show sid) sudokus
   bItems <- stepper options never :: UI (Behavior [String])
   let bDisplayItem = pure UI.string :: Behavior (String -> UI Element)
   -- bJustSelection <- stepper firstId (filterJust eSelection)
@@ -109,10 +123,11 @@ runApp sudokus w = void $ mdo
   let (levels, sudokus') = unzip sudokus
   caption <- UI.h1
 
-  listBoxAndEvent <- mapM selectSudoku' sudokus'
   let (listBoxes, eListBoxes) = unzip listBoxAndEvent
+  bSelections <- mapM (\x -> stepper (Just "--- choose a Sudoku ---") $ head <$> unions [Just <$> x, Just "--- choose a Sudoku ---" <$ unions eListBoxes]) eListBoxes
+  listBoxAndEvent <- mapM (\(x,y) -> selectSudoku'' y x) $ zip bSelections sudokus' 
   
-  bListBox <- (stepper Nothing $ Just <$> head <$> unions eListBoxes) :: UI (Behavior (Maybe String))
+  bListBox <- (stepper Nothing $ Just <$> (filterE (not . isPrefixOf "---") $ head <$> unions eListBoxes)) :: UI (Behavior (Maybe String))
   let bSudoku = fmap (findSudoku (concat sudokus') . read) <$> bListBox :: Behavior (Maybe SudokuWithId)
       bCaption = maybe "Welcome to Sudoku Land!" ("Sudoku "++) <$> bListBox
 
