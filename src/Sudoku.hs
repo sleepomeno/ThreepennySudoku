@@ -86,27 +86,49 @@ mysetup =  do
   startTime .= now
   showSudoku
 
-selectSudoku' :: [SudokuWithId] -> [Event String]-> UI (UI.ListBox String, Event String)
-selectSudoku' sudokus eListBoxes = mdo
-  let firstId = case head sudokus of { (Sudoku sid _ _) -> show sid }
-      choose = "--- choose a Sudoku ---"
-  listBox <- UI.listBox bItems bSelection bDisplayItem
-  let eSelection = rumors $ UI.userSelection listBox
-  bSelection <- stepper (Just choose) $ head <$> unions [eSelection, Just choose <$ unions eListBoxes]
-  let options = choose : map (\(Sudoku sid _ _) -> show sid) sudokus
-  bItems <- stepper options never :: UI (Behavior [String])
-  let bDisplayItem = pure UI.string :: Behavior (String -> UI Element)
-  -- bJustSelection <- stepper firstId (filterJust eSelection)
+-- selectSudoku' :: [SudokuWithId] -> [Event String]-> UI (UI.ListBox String, Event String)
+-- selectSudoku' sudokus eListBoxes = mdo
+--   let firstId = case head sudokus of { (Sudoku sid _ _) -> show sid }
+--       choose = "--- choose a Sudoku ---"
+--   listBox <- UI.listBox bItems bSelection bDisplayItem
+--   let eSelection = rumors $ UI.userSelection listBox
+--   bSelection <- stepper (Just choose) $ head <$> unions [eSelection, Just choose <$ unions eListBoxes]
+--   let options = choose : map (\(Sudoku sid _ _) -> show sid) sudokus
+--   bItems <- stepper options never :: UI (Behavior [String])
+--   let bDisplayItem = pure UI.string :: Behavior (String -> UI Element)
+--   -- bJustSelection <- stepper firstId (filterJust eSelection)
   
-  return (listBox, filterJust eSelection)
+--   return (listBox, filterJust eSelection)
+
+
+chooseSudokus = "--- choose a Sudoku ---"
+
+selectSudokus' :: [[SudokuWithId]] -> UI [(UI.ListBox String, Event String)]
+selectSudokus' sudokus = mdo
+  listBox1 <- UI.listBox bItems1 bSelection1 bDisplayItem1
+  listBox2 <- UI.listBox bItems2 bSelection2 bDisplayItem2
+  let eSelection1 = rumors $ UI.userSelection listBox1
+  let eSelection2 = rumors $ UI.userSelection listBox2
+  bSelection1 <- stepper (Just chooseSudokus) $ head <$> unions [eSelection1, Just chooseSudokus <$ (filterE (all (/= chooseSudokus)) $ unions [filterJust eSelection2])]
+  bSelection2 <- stepper (Just chooseSudokus) $ head <$> unions [eSelection2, Just chooseSudokus <$ (filterE (all (/= chooseSudokus)) $ unions [filterJust eSelection1])]
+  let sudokus1 = map (\(Sudoku sid _ _) -> show sid) (sudokus!!0)
+  let sudokus2 = map (\(Sudoku sid _ _) -> show sid) (sudokus!!1)
+  let options1 = chooseSudokus : sudokus1
+  let options2 = chooseSudokus : sudokus2
+  -- bItems1 <- stepper options1 never :: UI (Behavior [String])
+  bItems1 <- stepper options1 $ head <$> unions [sudokus1 <$ filterE (/= chooseSudokus) (filterJust eSelection1), options1 <$ (filterE (all (/= chooseSudokus)) $ unions [filterJust eSelection2])] :: UI (Behavior [String])
+  bItems2 <- stepper options2 $ head <$> unions [sudokus2 <$ filterE (/= chooseSudokus) (filterJust eSelection2), options2 <$ (filterE (all (/= chooseSudokus)) $ unions [filterJust eSelection1])] :: UI (Behavior [String])
+  let bDisplayItem1 = pure UI.string :: Behavior (String -> UI Element)
+  let bDisplayItem2 = pure UI.string :: Behavior (String -> UI Element)
+  
+  return [(listBox1, filterJust eSelection1), (listBox2, filterJust eSelection2)]
 
 
 selectSudoku'' :: [SudokuWithId] -> Behavior (Maybe String) -> UI (UI.ListBox String, Event String)
 selectSudoku'' sudokus bSelection = mdo
-  let choose = "--- choose a Sudoku ---"
   listBox <- UI.listBox bItems bSelection bDisplayItem
   let eSelection = rumors $ UI.userSelection listBox
-  let options = choose : map (\(Sudoku sid _ _) -> show sid) sudokus
+  let options = chooseSudokus : map (\(Sudoku sid _ _) -> show sid) sudokus
   bItems <- stepper options never :: UI (Behavior [String])
   let bDisplayItem = pure UI.string :: Behavior (String -> UI Element)
   -- bJustSelection <- stepper firstId (filterJust eSelection)
@@ -117,17 +139,19 @@ findSudoku :: [SudokuWithId] -> Integer -> SudokuWithId
 findSudoku sudokus sid = head $ filter (\(Sudoku sid' _ _ ) -> sid' == sid) sudokus 
 
 runApp :: [(String,[SudokuWithId])] -> Window -> UI ()
-runApp sudokus w = void $ mdo
+runApp sudokus'' w = void $ mdo
   UI.addStyleSheet w "sudoku.css"
   let fstSudokuId (Sudoku sid _ _:_) = show sid
-  let (levels, sudokus') = unzip sudokus
+      sudokus''' = take 2 sudokus''
+  let (levels, sudokus') = unzip sudokus'''
   caption <- UI.h1
 
-  let (listBoxes, eListBoxes) = unzip listBoxAndEvent
-  bSelections <- mapM (\x -> stepper (Just "--- choose a Sudoku ---") $ head <$> unions [Just <$> x, Just "--- choose a Sudoku ---" <$ unions eListBoxes]) eListBoxes
-  listBoxAndEvent <- mapM (\(x,y) -> selectSudoku'' y x) $ zip bSelections sudokus' 
+  let (listBoxes, eListBoxes) = unzip listBoxesAndEvents
+  -- listBoxAndEvent <- mapM (\(x,y) -> selectSudoku'' y x) $ zip bSelections sudokus' 
+  listBoxesAndEvents <- selectSudokus' sudokus' 
+  -- bSelections <- mapM (\x -> stepper (Just "--- choose a Sudoku ---") $ head <$> unions [Just <$> x, Just "--- choose a Sudoku ---" <$ unions eListBoxes]) eListBoxes
   
-  bListBox <- (stepper Nothing $ Just <$> (filterE (not . isPrefixOf "---") $ head <$> unions eListBoxes)) :: UI (Behavior (Maybe String))
+  bListBox <- (stepper Nothing $ Just <$> (filterE (/= chooseSudokus) $ head <$> unions eListBoxes)) :: UI (Behavior (Maybe String))
   let bSudoku = fmap (findSudoku (concat sudokus') . read) <$> bListBox :: Behavior (Maybe SudokuWithId)
       bCaption = maybe "Welcome to Sudoku Land!" ("Sudoku "++) <$> bListBox
 
@@ -147,7 +171,7 @@ runApp sudokus w = void $ mdo
              let otherEvents = take nr eListBoxes ++ drop (nr+1) eListBoxes
              let ownEvent = eListBoxes!!nr
              let container = UI.div
-             bWrapperClass <- stepper "selectSudokus" $ head <$> unions ["selectSudokus" <$ (head <$> unions otherEvents), "selectSudokus highlighted" <$ ownEvent]
+             bWrapperClass <- stepper "selectSudokus" $ head <$> unions ["selectSudokus" <$ filterE (/= chooseSudokus) (head <$> unions otherEvents), "selectSudokus highlighted" <$ filterE (/= chooseSudokus) ownEvent]
              container # sink UI.class_ bWrapperClass #+ [element level, (element . getElement) listBox]
   element caption # sink text bCaption
   getBody w # set children ([caption, choose, content] ++ selects)
