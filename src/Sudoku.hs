@@ -11,14 +11,17 @@ import Graphics.UI.Threepenny.Core
 #endif
 import Paths
 import Reactive.Threepenny
+
 import Data.List(groupBy,sort,isPrefixOf)
 import Data.List.Split
+import Data.Char(isDigit)
 import Common
 import Data.Maybe (listToMaybe, isJust, fromMaybe, fromJust)
 import System.FilePath((</>),(<.>))
 import Control.Monad(void,liftM,sequence,forM)
 import Control.Monad.Trans.Class
 import Data.Time
+import Control.Arrow(first,second)
 import Control.Monad.Trans.State as S
 import Control.Lens ((^.),(&),Lens', makeLenses, view)
 import Control.Lens.Getter (use)
@@ -147,16 +150,22 @@ runApp sudokus'' w = void $ mdo
   caption <- UI.h1
 
   let (listBoxes, eListBoxes) = unzip listBoxesAndEvents
-  -- listBoxAndEvent <- mapM (\(x,y) -> selectSudoku'' y x) $ zip bSelections sudokus' 
   listBoxesAndEvents <- selectSudokus' sudokus' 
-  -- bSelections <- mapM (\x -> stepper (Just "--- choose a Sudoku ---") $ head <$> unions [Just <$> x, Just "--- choose a Sudoku ---" <$ unions eListBoxes]) eListBoxes
   
-  bListBox <- (stepper Nothing $ Just <$> (filterE (/= chooseSudokus) $ head <$> unions eListBoxes)) :: UI (Behavior (Maybe String))
+  let eSudoku' = filterE (/= chooseSudokus) $ head <$> unions eListBoxes
+  bSudoku' <- stepper "0" eSudoku'
+  let bSudoku''= fmap not <$> (==) <$> bSudoku' :: Behavior (String -> Bool)
+      eSudoku = filterApply bSudoku'' eSudoku'
+
+      
+  bListBox <- (stepper Nothing $ Just <$> eSudoku) :: UI (Behavior (Maybe String))
   let bSudoku = fmap (findSudoku (concat sudokus') . read) <$> bListBox :: Behavior (Maybe SudokuWithId)
       bCaption = maybe "Welcome to Sudoku Land!" ("Sudoku "++) <$> bListBox
 
-  cells <- sequence [createCell' col row digit | row <- [0..8], col <- [0..8], let digit  = fmap ((!!col) . (!!row) . chunksOf 9 . extractDigits ) <$> bSudoku ]
-  let cellElems = fmap (return . fst) cells
+  cells <- sequence [createCell' col row digit eSudoku | row <- [0..8], col <- [0..8], let digit  = fmap ((!!col) . (!!row) . chunksOf 9 . extractDigits ) <$> bSudoku ]
+  let (cellElems, eMistakes) = unzip $ fmap (first return) cells :: ([UI Element], [Event Bool])
+  -- let cellElems = fmap (return . fst) cells
+      
   let bChoose = (\x -> if isJust x then "welcome hide" else "welcome") <$> bListBox 
       bSudokuGrid = (\x -> if isJust x then "sudoku" else "sudoku hide") <$> bListBox
   choose <- UI.div #. "welcome" #+ [UI.h2 # set text "Choose a Sudoku ->"]
@@ -174,11 +183,18 @@ runApp sudokus'' w = void $ mdo
              bWrapperClass <- stepper "selectSudokus" $ head <$> unions ["selectSudokus" <$ filterE (/= chooseSudokus) (head <$> unions otherEvents), "selectSudokus highlighted" <$ filterE (/= chooseSudokus) ownEvent]
              container # sink UI.class_ bWrapperClass #+ [element level, (element . getElement) listBox]
   element caption # sink text bCaption
-  getBody w # set children ([caption, choose, content] ++ selects)
+
+  mistakes <- UI.h3
+  bMistakesInt <- accumB 0 $ concatenate <$> unions [const 0 <$ eSudoku, (+1)  <$ unions eMistakes] :: UI (Behavior Int)
+  let bMistakes = (++ " Mistakes") . show <$> bMistakesInt
+  element mistakes # sink text bMistakes
+
+  
+  getBody w # set children ([caption, choose, content] ++ selects ++ [mistakes])
 
 
-createCell' :: Int -> Int -> Behavior (Maybe Digit) -> UI (Element, Event String)
-createCell' x y digit =
+createCell' :: Int -> Int -> Behavior (Maybe Digit) -> Event String -> UI (Element, Event Bool)
+createCell' x y digit eSudoku =
   let classes = "cell row"++show y++"col"++show x
       isFree digit' = case digit' of { (Guess _) -> True; _ -> False}
       digitString digit' = case digit' of
@@ -197,12 +213,18 @@ createCell' x y digit =
      element cell # set children [getElement cellInput]
      let bDigit = UI.userText cellInput
          eInput = rumors bDigit
-         eInputClasses = ((\x y -> maybe "" (\v -> case v of { (Guess z) -> if z == read y then classes ++ " right" else classes ++ " wrong"; (Free _) -> classes }) x) <$> digit) <@> eInput 
+         isDigit' digit' = if length digit' /= 1 then False else isDigit $ head digit'
+         eDigitInput = read <$> filterE isDigit' eInput :: Event Int
+         eNonDigitInput = filterE (not . isDigit') eInput
+         eCorrectState = (\x y -> maybe False (either (==y) (==y) . toEither) x) <$> digit <@> eDigitInput :: Event Bool
+         eCorrect = filterE id eCorrectState
+         eNotCorrect = filterE not eCorrectState
          
-     bInputClasses <- stepper classes eInputClasses
+         eInputClasses = head <$> unions [classes ++ " wrong" <$ eNotCorrect, classes ++ " right" <$ eCorrect, classes <$ eNonDigitInput] 
+     bInputClasses <- stepper classes $ head <$> unions [classes <$ eSudoku, eInputClasses]
      element cell # sink UI.class_ bInputClasses
      
-     return (cell, eInput)
+     return (cell, eNotCorrect)
   
 showSudoku :: StateT App UI ()
 showSudoku  = do
