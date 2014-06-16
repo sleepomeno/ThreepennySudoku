@@ -1,12 +1,10 @@
-{-# LANGUAGE CPP, RecursiveDo, RankNTypes, TemplateHaskell , PackageImports, NoMonomorphismRestriction #-}
+{-# LANGUAGE CPP, RecursiveDo #-}
 
 module Main where
 
 #ifdef CABAL
 import qualified  "threepenny-gui" Graphics.UI.Threepenny as UI
-
-
-  import "threepenny-gui" Graphics.UI.Threepenny.Core
+import "threepenny-gui" Graphics.UI.Threepenny.Core
 #else
 import qualified Graphics.UI.Threepenny as UI
 import Graphics.UI.Threepenny.Core
@@ -22,35 +20,17 @@ import Common
 import Data.Maybe (listToMaybe, isNothing, isJust, fromMaybe, fromJust)
 import System.FilePath((</>),(<.>))
 import Control.Monad(when,join,void,liftM,sequence,forM)
-import Control.Monad.Trans.Class
-import Data.Time
 import Control.Arrow(first,second,(***),(+++),(&&&),(>>>))
-import Control.Monad.Trans.State as S
-import Control.Lens ((^.),(&),Lens', makeLenses, view)
-import Control.Lens.Getter (use)
-import Control.Lens.Setter ((.=), (.~))
 import Database.HDBC
 import Database.HDBC.Sqlite3
 import System.IO.Unsafe (unsafePerformIO)
-
-data App = App { _easy :: [SudokuWithId],
-                _medium :: [SudokuWithId],
-                _hard :: [SudokuWithId],
-                _insane :: [SudokuWithId],
-                _window :: Window,
-                _chosen :: SudokuWithId,
-                _startTime :: UTCTime,
-                _timer :: UI.Timer}
-makeLenses ''App
-
-type SudokuLens = Lens' App [SudokuWithId] 
 
 main :: IO ()
 main = do
 
     static <- getStaticDir
     let database = static </> db -- database file is in /wwwroot
-    sudokus@[easySudokus, mediumSudokus, hardSudokus, insaneSudokus] <- readSudokus database
+    sudokus <- readSudokus database
 
     startGUI defaultConfig
         { tpPort       =  10000
@@ -110,7 +90,7 @@ findSudoku sudokus sid = head $ filter (\(Sudoku sid' _ _ ) -> sid' == sid) sudo
 findSudoku' :: [SudokuWithId] -> Integer -> Maybe SudokuWithId
 findSudoku' sudokus sid = case filter (\(Sudoku sid' _ _ ) -> sid' == sid) sudokus of
   [] -> Nothing
-  (a:as) -> Just a
+  (a:_) -> Just a
 
 chooseSudokus = "--- choose a Sudoku ---"
 filterSudokusE = filterE (/= chooseSudokus) 
@@ -135,9 +115,6 @@ runApp labeledSudokus w = void $ mdo
       
   bListBox <- (stepper Nothing $ Just <$> eSudoku) :: UI (Behavior (Maybe String))
 
-  -- bSudoku designates what Sudoku (Just SudokuWithId) is displayed at any moment or if no sudoku has been selected yet (Nothing)
-  let bSudoku = fmap (findSudoku (concat sudokus) . read) <$> bListBox :: Behavior (Maybe SudokuWithId)
-
   -- Create cells and corresponding mistake event streams
   cells <- sequence [createCell col row' eSudoku eNewDigit' | row' <- [0..8], col <- [0..8],
                      let eNewDigit' = eNewDigit sudokus eSudoku (col, row')] 
@@ -146,10 +123,8 @@ runApp labeledSudokus w = void $ mdo
   -- Create content panels
   let bChoose = (\x -> if isJust x then "welcome hide" else "welcome") <$> bListBox 
       bSudokuGrid = (\x -> if isJust x then "sudoku" else "sudoku hide") <$> bListBox
-  choosePanel <- UI.div #. "welcome" #+ [UI.h2 # set text "Choose a Sudoku ->"]
-  widget choosePanel # sink UI.class_ bChoose
-  contentPanel <- UI.div
-  widget contentPanel # sink UI.class_ bSudokuGrid #+ sudokuGrid cellElems
+  choosePanel <- UI.div #+ [UI.h2 # set text "Choose a Sudoku to solve:" # set UI.style [("font-style","italic")]] # sink UI.class_ bChoose
+  contentPanel <- UI.div #. "sudoku hide" # sink UI.class_ bSudokuGrid #+ sudokuGrid cellElems
   
   -- create wrappers for select boxes
   -- make sure the wrapper for the level of the current sudoku gets highlighted
@@ -172,13 +147,10 @@ runApp labeledSudokus w = void $ mdo
   widget captionPanel # sink text bCaption
 
   let eIncorrectDigit = map (\x -> () <$ filterE not x) eDigitCorrect
-  -- bCorrectnessOfInput <- forM eCorrect $ \x -> stepper 0 (head <$> unions [((\x -> if x then 1 else 0) <$> x)])
-  -- bCorrectnessOfInput <- forM eCorrect $ stepper False 
   bCorrectnessOfInput <- forM eCorrect $ stepper (0::Int) . fmap (\x -> if x then 1 else 0)
-  -- let bSudokuCorrect = foldl1' (\x y -> (&&) <$> x <*> y) bCorrectnessOfInput :: Behavior Bool
   let bSudokuCorrect = foldl1' (\x y -> (+) <$> x <*> y) bCorrectnessOfInput
-      eSudokuCorrect = ((\x -> const (x>28)) <$> bSudokuCorrect) `filterApply` (head <$> unions eCorrect)
-  
+      sudokuSize = 81
+
   -- error
   errorPanel <- UI.h3
   bErrorInt <- accumB 0 $ concatenate <$> unions [
@@ -187,30 +159,31 @@ runApp labeledSudokus w = void $ mdo
     ] :: UI (Behavior Int)
   -- let bError = (++ " Error") . show <$> bErrorInt
   let bError = (show &&& (\x -> if x == 1 then " Error" else " Errors") >>> uncurry (++)) <$> bErrorInt
-  widget errorPanel # sink text bError
-  widget errorPanel # sink UI.class_ (maybe "hide" (const "") <$> bListBox)
+  widget errorPanel # sink text bError # sink UI.class_ (maybe "hide" (const "") <$> bListBox)
 
   -- timer
   timePanel <- UI.h3
-  timer <- UI.timer # set UI.interval 1000
+  timer <- UI.timer # set UI.interval 1000 # sink UI.running ( (<sudokuSize) <$> bSudokuCorrect)
 
-  eTimerInt <- accumE (0 :: Int) $ concatenate <$> unions [const 0 <$ eSudoku, (+1) <$ UI.tick timer] :: UI (Event Int)
+  eTimerInt <- accumE (0 :: Int) $ concatenate <$> unions [
+    const 0 <$ eSudoku,
+    (+1) <$ UI.tick timer
+    ] :: UI (Event Int)
+
   let padNumber x = if x < 10 then '0':show x else show x
       eTimerFormatted = ((\(x,y) -> x ++ ":" ++ y) . join (***) padNumber . (`quotRem` 60)) <$> eTimerInt :: Event String
-  bTimer <- stepper "" eTimerFormatted
-  widget timePanel # sink text bTimer
-  widget timePanel # sink UI.class_ (maybe "hide" (const "") <$> bListBox)
 
-  onEvent eSudokuCorrect $ const $ UI.stop timer
-  onEvent eSudoku $ const $ UI.start timer
+  bTimer <- stepper "" eTimerFormatted
+  widget timePanel # sink text bTimer # sink UI.class_ (maybe "hide" (const "") <$> bListBox)
 
   -- Solved Panel
-  solvedPanel <- UI.h3
-  let bSolved = (\x -> if x>28 then "Gewonnen!" else "") <$> bSudokuCorrect 
-  widget solvedPanel # sink text bSolved
+  solvedPanel <- UI.h3 # set UI.class_ "solved" # sink text bSolved
+  let bSolved = (\x -> if x>=sudokuSize then "Solved!" else "") <$> bSudokuCorrect 
+
+  sidebarPanel <- UI.div  # set UI.class_ "sidebar" # set children (selects ++ [errorPanel, timePanel, solvedPanel])
   
   -- add panels to body
-  getBody w # set children ([captionPanel, choosePanel, contentPanel] ++ selects ++ [errorPanel, timePanel, solvedPanel])
+  getBody w # set children [captionPanel, choosePanel, contentPanel, sidebarPanel]
 
 
 createCell :: Int -> Int -> Event String -> Event (Maybe Digit) -> UI (Element, Event Bool, Event Bool)
@@ -273,6 +246,7 @@ createCell x y eSudoku eNewDigit =
 
 
 --- taken from Network-CGI-Protocol package
+maybeRead :: String -> Maybe Int
 maybeRead = fmap fst . listToMaybe . reads
   
 -- Separates the cells into 9 sudoku blocks and concatenates them

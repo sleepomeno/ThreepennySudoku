@@ -17,9 +17,9 @@ cabal-version:       >=1.8
 Data-dir:            .
 Data-files:          wwwroot/css/*.css
                      ,wwwroot/css/*.png
-                     ,wwwroot/sudokus/*.sudoku
+                     ,wwwroot/sudokus.db
 
-flag buildExamples
+flag buildExecutables
     description: Build sudoku application and scraper executables.
     default:     False
 
@@ -28,12 +28,12 @@ Library
   Exposed-modules: Solver
   Other-modules:        Paths_sudoku
   CPP-Options:      -DCABAL
-  build-depends:       safe, base ==4.6.*, threepenny-gui==0.4.0.2 , filepath, hxt, HandsomeSoup, tagsoup, split ==0.2.2, vector, HTTP, lens ==4.1.2, HDBC-sqlite3
+  build-depends:       safe, base ==4.6.*, threepenny-gui==0.4.0.2 , filepath, hxt, HandsomeSoup, tagsoup, split ==0.2.2, vector, HTTP, HDBC-sqlite3, array
 
 executable sudoku
-  if flag(buildExamples)
+  if flag(buildExecutables)
      cpp-options: -DCABAL
-     build-depends:       safe, base ==4.6.*, threepenny-gui ==0.4.0.2, filepath, hxt, HTTP, vector, split ==0.2.2, lens ==4.1.2, transformers,HDBC-sqlite3, HDBC, time
+     build-depends:       safe, base ==4.6.*, threepenny-gui ==0.4.0.2, filepath, hxt, HTTP, vector, split ==0.2.2, transformers,HDBC-sqlite3, HDBC, array
   else
      buildable: False
   main-is:        Sudoku.hs
@@ -41,7 +41,7 @@ executable sudoku
   other-modules:  Paths_sudoku, Paths
 
 executable scraper
-  if flag(buildExamples)
+  if flag(buildExecutables)
      cpp-options: -DCABAL
      build-depends: base, HTTP, vector, split ==0.2.2, tagsoup, hxt, HDBC-sqlite3, HDBC
   else

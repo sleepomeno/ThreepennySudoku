@@ -35,8 +35,8 @@ data SudokuWithLevel = SudokuL LevelDescription [Digit] deriving (Show, Read, Eq
 data Level = Level Integer Int LevelDescription 
 data LevelDescription = Easy | Medium | Hard | Insane deriving (Show, Read, Eq, Enum, Ord)
 levels :: [Level]
--- levels = [Level 1000000000 977 "Easy" , Level 2000000000 590 "Medium" , Level 3000000000 485 "Hard", Level 4000000000 808 "Insane"]
-levels = [Level 1000000000 2 Easy, Level 2000000000 2 Medium, Level 3000000000 2 Hard, Level 4000000000 2 Insane]
+levels = [Level 1000000000 200 Easy , Level 2000000000 200 Medium , Level 3000000000 200 Hard, Level 4000000000 200 Insane]
+-- levels = [Level 1000000000 2 Easy, Level 2000000000 2 Medium, Level 3000000000 2 Hard, Level 4000000000 2 Insane]
 
 db = "sudokus.db"
 

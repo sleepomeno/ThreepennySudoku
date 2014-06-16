@@ -20,31 +20,22 @@ framework for Haskell Web GUIs. So don't expect any groundbreaking
 Sudoku functionality ;)
 
 ## How can I start it?
-You need *cabal* in order to build the application. I actually
-recommend *cabal-dev* (which downloads dependencies into a sandbox
-instead of your global package archive).
+You need *cabal* in order to build the application.
 
 Execute in */*
 
 ```
-cabal-dev -fbuildExamples install
+cabal sandbox init;
+cabal -fbuildExecutables install
 ```
     
-In the folder */cabal-dev/bin* there can then be found an executable.
+In the folder */dist/dist-sandbox-xxx/build/sudoku/* there can then be found an executable.
 If you run it you can access the application on **localhost:10000**!
 
 ## What is the scraper executable for?
 Apart from the sudoku application executable there is also a _scraper_
-executable. This is how I got the free sudokus of the
-*/wwwroot/sudokus* directory. The executable fetches the sudokus from
-[sudoku.org](http://www.soduko.org/sudoku-list.php), use it like this
-to get the first 30 easy sudokus:
-
-```
-./scraper 1000000000 30 > easy
-```
-(The first parameter is the starting index of the sudoku.org sudokus. As you can see on [sudoku.org](http://www.soduko.org/sudoku-list.php) the sudokus can be accessed through a fairly simply URL pattern.)
-
-## Next (IMPORTANT!) step
-
-* Make the extracted Sudokus choosable and playable in the application!! ;)
+executable (in */dist/dist-sandbox-xxx/build/scraper/*). This is how I got the free sudokus of the
+*/wwwroot/sudokus.db* database file . The executable fetches the sudokus from
+[sudoku.org](http://www.soduko.org/sudoku-list.php) and stores them in
+the current directory. You would then need to copy the *sudokus.db*
+file to */wwwroot*, however, I already put the file there ;)

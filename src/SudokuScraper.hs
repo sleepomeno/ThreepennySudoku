@@ -16,7 +16,6 @@ data SudokuRequest = SudokuRequest { sid :: Int, url :: String }
 sudokuStringBase = "http://www.soduko.org/sudoku-print.php?id="
 
 exit    = exitSuccess
-usage = putStrLn "Usage SudokuScraper base number"          
 
 main = handleSqlError $ do
   args <- getArgs
