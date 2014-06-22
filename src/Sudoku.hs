@@ -1,4 +1,4 @@
-{-# LANGUAGE CPP, RecursiveDo #-}
+{-# LANGUAGE CPP, PackageImports, RecursiveDo #-}
 
 module Main where
 
@@ -33,7 +33,7 @@ main = do
     sudokus <- readSudokus database
 
     startGUI defaultConfig
-        { tpPort       =  10000
+        { tpPort       =  Just 10000
         , tpStatic     = Just static
         } (runApp $ zip ["Easy", "Medium", "Hard", "Insane"] sudokus)
 
