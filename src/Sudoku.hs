@@ -1,6 +1,4 @@
-{-# LANGUAGE CPP            #-}
-{-# LANGUAGE PackageImports #-}
-{-# LANGUAGE RecursiveDo    #-}
+{-# LANGUAGE CPP, PackageImports, RecursiveDo #-}
 
 module Main where
 

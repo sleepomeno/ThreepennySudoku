@@ -1,3 +1,4 @@
 cabal-dev
 TAGS
 dist
+cabal.sandbox.config
