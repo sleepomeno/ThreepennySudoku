@@ -28,12 +28,14 @@ Library
   Exposed-modules: Solver
   Other-modules:        Paths_sudoku
   CPP-Options:      -DCABAL
-  build-depends:       safe, base ==4.6.*, threepenny-gui==0.4.0.2 , filepath, hxt, HandsomeSoup, tagsoup, split ==0.2.2, vector, HTTP, HDBC-sqlite3, array
+  build-depends:       HDBC >= 2.4.0.0,
+                       safe, base, threepenny-gui >=0.5.0.0, filepath, hxt, HandsomeSoup, tagsoup, split ==0.2.2, vector, HTTP, HDBC-sqlite3, array
 
 executable sudoku
   if flag(buildExecutables)
      cpp-options: -DCABAL
-     build-depends:       safe, base ==4.6.*, threepenny-gui ==0.4.0.2, filepath, hxt, HTTP, vector, split ==0.2.2, transformers,HDBC-sqlite3, HDBC, array
+     build-depends:       HDBC >= 2.4.0.0,
+                          safe, base , threepenny-gui  >=0.4.0.2, filepath, hxt, HTTP, vector, split ==0.2.2, transformers,HDBC-sqlite3,  array
   else
      buildable: False
   main-is:        Sudoku.hs

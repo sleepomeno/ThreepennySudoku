@@ -6,6 +6,8 @@ data RawSudoku = RawS [[Int]]
 data Digit = Guess Int | Free Int deriving (Show, Read, Eq) -- a digit is either visible to
                            -- the user (=Free) oder has to be guessed
                            -- (= Guess)
+data Correctness = Correct | NotCorrect | NotADigit deriving (Show, Read, Eq)
+type SudokuId = String
 
 fromEither :: Either Int Int -> Digit
 fromEither x = case x of
